@@ -25,7 +25,7 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 RTX serie 50 e superiori:
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-4) Scarica Blender 4.2 LTS da qui e copia la cartella nella directory "Blender" del progetto:
+4) Scarica Blender 4.2 LTS ed estrai/copia la cartella estratta nella directory base del progetto con il nome "Blender":
 
 Windows: https://download.blender.org/release/Blender4.2/blender-4.2.9-windows-x64.zip
 Linux: https://download.blender.org/release/Blender4.2/blender-4.2.9-linux-x64.tar.xz
@@ -42,3 +42,8 @@ python Main.py
 python execute_segmentator_pipeline.py
 python execute_blender_pipeline-py // da testare bene
 
+
+ACKNOWLEDGMENTS / RINGRAZIAMENIT:
+
+Total Segmentator:
+https://pubs.rsna.org/doi/10.1148/ryai.230024
