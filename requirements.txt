@@ -1,0 +1,8 @@
+PyYAML
+nibabel
+pyvista
+scikit-image
+SimpleITK
+numpy
+totalsegmentator
+xgboost

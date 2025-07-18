@@ -1,0 +1,124 @@
+guide_title: "Guida Operativa alla Pipeline Tac2Ar"
+version: "3.0 - Architettura basata su Manifest"
+
+# -------------------------------------------
+# 1. Panoramica e Architettura
+# -------------------------------------------
+introduzione: >
+  Questa guida descrive l'architettura e l'uso della pipeline Tac2Ar. Il sistema è
+  progettato per convertire immagini mediche (DICOM/NIfTI) in modelli 3D ottimizzati
+  e texturizzati, pronti per applicazioni AR/VR e di rendering.
+
+architettura_chiave: >
+  Il cuore della pipeline è un file **manifesto** (`segments_data_manifest.json`),
+  che agisce come un "oggetto di trasferimento dati" tra le due fasi principali del processo.
+  Questo approccio garantisce un disaccoppiamento totale tra la logica di segmentazione
+  e quella di elaborazione 3D.
+
+  - **Fase 1: Segmentazione (`segmentator_pipeline.py`)**:
+    Analizza le immagini mediche, esegue la segmentazione con TotalSegmentator,
+    e produce due output cruciali: i modelli 3D grezzi (.stl) e il file `segments_data_manifest.json`
+    che li descrive (es. a quale categoria biologica appartengono).
+
+  - **Fase 2: Elaborazione 3D (`blender_pipeline.py`)**:
+    Legge il manifest e i file .stl. Arricchisce il manifest con le informazioni sui
+    materiali di Blender, e poi usa queste informazioni per processare, texturizzare
+    ed esportare il modello 3D finale.
+
+interfaccia_utente: >
+  L'utente configura il processo tramite due file YAML principali:
+  - `segmentMappings.yaml`: Definisce quali segmenti esportare, come raggrupparli,
+    e a quale `biological_category` appartengono.
+  - `blender_shader_registry.yaml`: Mappa le `biological_category` ai materiali
+    procedurali di Blender.
+
+# -------------------------------------------
+# 2. Struttura delle Directory e File Chiave
+# -------------------------------------------
+struttura_directory:
+  descrizione: "La pipeline si basa su una struttura di cartelle rigorosa, definita in `config.py`."
+  albero: |
+    Tac2Ar_TotalSegmentator/
+    ├── Blender/                  # Versione portable di Blender.
+    ├── Input/
+    │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/   # Dati grezzi (DICOM/NIfTI).
+    ├── Output/
+    │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/
+    │       ├── segments_data_manifest.json  # MANIFEST INIZIALE (da segmentator)
+    │       ├── enriched_manifest.json       # MANIFEST ARRICCHITO (da blender, per debug)
+    │       ├── {PROJECT_SESSION_ID}_processed.glb  # OUTPUT FINALE
+    │       └── Textures/
+    ├── Shaders/                  # File .blend con i materiali.
+    ├── Tmp/
+    │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/
+    │       └── mesh_intermediate/  # Contiene i file .stl grezzi.
+    ├── main.py                   # Orchestratore principale.
+    ├── segmentator_pipeline.py   # Logica Fase 1.
+    ├── blender_pipeline.py       # Logica Fase 2.
+    ├── config.py                 # Configurazione centrale.
+    ├── segmentMappings.yaml      # Interfaccia Utente: regole di segmentazione.
+    └── blender_shader_registry.yaml # Interfaccia Utente: regole dei materiali.
+
+# -------------------------------------------
+# 3. Flusso di Esecuzione Dettagliato
+# -------------------------------------------
+esecuzione:
+  descrizione: "Per avviare l'intero processo, eseguire `main.py` da un ambiente Python con le dipendenze di `requirements.txt` installate."
+  comando: "python main.py"
+
+flusso_dettagliato:
+  # --- FASE 1: SEGMENTAZIONE ---
+  - fase: "FASE 1: Pipeline di Segmentazione"
+    script: "`segmentator_pipeline.py`"
+    steps:
+      - id: "s01"
+        titolo: "Setup e Analisi Input"
+        descrizione: "Identifica i file di input (DICOM/NIfTI), esegue la segmentazione con TotalSegmentator e costruisce la struttura dati iniziale `all_segment_data` per i segmenti trovati."
+        riferimento: "`segmentator_ops.fetch_input_files`, `segmentator_ops.run_total_segmentator`"
+
+      - id: "s02"
+        titolo: "Arricchimento Dati"
+        descrizione: "Popola `all_segment_data` con dettagli da varie fonti: ID da TotalSegmentator, dati anatomici da un file SNOMED, e la `biological_category` leggendo le regole definite dall'utente in `segmentMappings.yaml`."
+        riferimento: "`segmentator_ops.populate_snomed_details_for_segments`"
+
+      - id: "s03"
+        titolo: "Esportazione STL e Creazione Voci Manifest per Gruppi"
+        descrizione: >
+          Esporta i modelli 3D in formato `.stl` nella cartella `mesh_intermediate`.
+          - Se un segmento è parte di un gruppo (definito in `combined_mesh_exports` in `segmentMappings.yaml`), viene unito agli altri e salvato come un unico file (es. `combined_mesh_exports_bones.stl`).
+          - **Cruciale**: Viene creata una nuova voce nel dizionario `all_segment_data` per questo gruppo, ereditando la `biological_category` dalla regola.
+        riferimento: "`segmentator_ops.export_stl_from_multilabel_nii`"
+
+      - id: "s04"
+        titolo: "Scrittura del Manifest"
+        descrizione: "Salva il dizionario `all_segment_data`, ora completo di tutte le informazioni di classificazione, nel file `segments_data_manifest.json` nella cartella di output. Questo file è il 'testimone' passato alla fase successiva."
+        riferimento: "`utils.write_json`"
+
+  # --- FASE 2: BLENDER ---
+  - fase: "FASE 2: Pipeline di Elaborazione 3D"
+    script: "`blender_pipeline.py`"
+    steps:
+      - id: "bp01"
+        titolo: "Lettura del Manifest e del Registro Shader"
+        descrizione: "All'avvio, Blender ignora `segmentMappings.yaml`. Legge invece il `segments_data_manifest.json` (la sua unica fonte di verità sui segmenti) e il `blender_shader_registry.yaml` (il suo catalogo di materiali)."
+        riferimento: "`utils.read_json`, `utils.read_yaml`"
+
+      - id: "bp02"
+        titolo: "Arricchimento del Manifest"
+        descrizione: >
+          Esegue la logica di decisione dei materiali. Itera sul manifest e, per ogni segmento, applica una logica di fallback per scegliere il materiale migliore:
+          1. Cerca uno shader con il nome esatto del segmento (es. `brain_shader`).
+          2. Se non lo trova, usa la `biological_category` del segmento per trovare lo shader associato.
+          3. Se fallisce anche questo, usa lo shader di default.
+          Aggiunge le informazioni sul materiale scelto (`shader_ref`, `blend_file`, `material_name_in_blend`) direttamente nel dizionario del manifest.
+        riferimento: "`blender_ops.enrich_segment_data_with_materials`"
+
+      - id: "bp03"
+        titolo: "Importazione Mesh e Applicazione Materiali"
+        descrizione: "Importa tutti i file `.stl` e, usando il manifest arricchito, applica a ogni oggetto il materiale che è stato deciso nel passo precedente. La funzione è un semplice esecutore, senza logica decisionale."
+        riferimento: "`blender_ops.import_meshes_into_blender_scene`, `blender_ops.apply_materials_from_manifest`"
+
+      - id: "bp04"
+        titolo: "Ottimizzazione, Baking ed Esportazione"
+        descrizione: "Procede con le fasi standard di ottimizzazione della geometria, baking delle texture sui materiali procedurali, e l'esportazione finale del modello in formato `.glb`."
+        riferimento: "Varie funzioni in `blender_ops.py`"

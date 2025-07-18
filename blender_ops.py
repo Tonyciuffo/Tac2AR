@@ -1,0 +1,1301 @@
+# blender_ops.py
+# from tkinter import NO
+import bpy
+import os
+import numpy as np
+import mathutils
+
+# Import config module to access global project settings
+import config 
+
+def setup_blender_environment():
+    """Sets up the Blender environment, including render engine and device."""
+    print("\n--- Setting up Blender Environment ---")
+    bpy.context.scene.render.engine = 'CYCLES'
+    
+    # Determine compute device type based on config.BLENDER_DEVICE
+    # compute_device_type for preferences is an enum: 'NONE', 'CUDA', 'OPTIX', 'HIP', 'ONEAPI'
+    # It does NOT accept 'CPU' directly. 'NONE' means no specific compute device, allowing CPU fallback.
+    
+    preferred_compute_type = 'NONE' # Default to NONE (CPU fallback)
+    
+    if config.BLENDER_DEVICE.upper() == "GPU":
+        # Check for CUDA
+        if "CUDA" in bpy.context.preferences.addons["cycles"].preferences.compute_device_type:
+            preferred_compute_type = "CUDA"
+        # Check for OpenCL if CUDA is not available
+        elif "OPENCL" in bpy.context.preferences.addons["cycles"].preferences.compute_device_type:
+            preferred_compute_type = "OPENCL"
+        else:
+            print("  Warning: No CUDA or OpenCL devices found. Falling back to CPU for Cycles compute.")
+            preferred_compute_type = "NONE" # Explicitly set to NONE for CPU fallback
+    elif config.BLENDER_DEVICE.upper() == "CPU":
+        preferred_compute_type = "NONE" # For CPU preference, set compute type to NONE
+        
+    bpy.context.preferences.addons["cycles"].preferences.compute_device_type = preferred_compute_type
+    
+    # Set the scene device based on whether a GPU compute type was successfully set
+    bpy.context.scene.cycles.device = 'GPU' if preferred_compute_type != "NONE" else 'CPU'
+
+    # Enable all available devices for the chosen compute type
+    bpy.context.preferences.addons["cycles"].preferences.get_devices()
+    print(f"  Compute Device Type: {bpy.context.preferences.addons['cycles'].preferences.compute_device_type}")
+    for d in bpy.context.preferences.addons["cycles"].preferences.devices:
+        d["use"] = 1
+        print(f"  Device: {d['name']}, Enabled: {d['use']}")
+    print(f"  Blender render engine set to CYCLES and device to {bpy.context.scene.cycles.device}.")
+
+# --- Utility Functions ---
+
+
+def _rename_imported_objects(imported_objs, new_name):
+    """Helper function to rename imported objects, handling single or multiple."""
+    renamed_objects = []
+    if isinstance(imported_objs, list):
+        for obj in imported_objs:
+            obj.name = new_name
+            renamed_objects.append(obj)
+    elif imported_objs:
+        imported_objs.name = new_name
+        renamed_objects.append(imported_objs)
+    return renamed_objects
+
+def _get_blender_asset_details(shader_ref, segment_mappings, blender_assets):
+    """
+    Retrieves the physical Blender asset details (blend_file, blend_material)
+    for a given symbolic shader_ref.
+    """
+    if shader_ref not in blender_assets.get('blender_assets', {}): # Use .get() for safety
+        print(f"Error: Shader reference '{shader_ref}' not found in {config.BLENDER_SHADER_REGISTRY_FILE}.")
+        return None, None
+    
+    details = blender_assets['blender_assets'][shader_ref]
+    return details.get('blend_file'), details.get('blend_material')
+
+def _get_material_color(obj_name, segment_mappings):
+    """
+    Determines the base color for an object based on segment mappings and fallback categories.
+    """
+    # 1. Try to get color from specific segment mapping in individual_mesh_exports
+    if obj_name in segment_mappings.get('individual_mesh_exports', {}) and 'color' in segment_mappings['individual_mesh_exports'][obj_name]:
+        return segment_mappings['individual_mesh_exports'][obj_name]['color']
+    
+    # 2. Try to get color from specific segment mapping in combined_mesh_exports
+    if obj_name in segment_mappings.get('combined_mesh_exports', {}) and 'color' in segment_mappings['combined_mesh_exports'][obj_name]:
+        return segment_mappings['combined_mesh_exports'][obj_name]['color']
+
+    # 3. Try to get color from fallback category
+    # This logic assumes 'segment_mappings' in this function refers to the overall loaded YAML dict.
+    # We need to check if the obj_name exists in either individual or combined exports
+    # to derive its category or shader_ref.
+    
+    # Try to find segment details in individual_mesh_exports or combined_mesh_exports
+    seg_details = None
+    if obj_name in segment_mappings.get('individual_mesh_exports', {}):
+        seg_details = segment_mappings['individual_mesh_exports'][obj_name]
+    elif obj_name in segment_mappings.get('combined_mesh_exports', {}):
+        seg_details = segment_mappings['combined_mesh_exports'][obj_name]
+
+    if seg_details and 'category' in seg_details and seg_details['category'] in segment_mappings.get('fallback_categories', {}):
+        category_name = seg_details['category']
+        if 'default_color' in segment_mappings['fallback_categories'][category_name]:
+            return segment_mappings['fallback_categories'][category_name]['default_color']
+            
+    # 4. Try to get color from shader_dictionary default_color
+    if seg_details and 'shader_ref' in seg_details and seg_details['shader_ref'] in segment_mappings.get('shader_dictionary', {}):
+        shader_ref = seg_details['shader_ref']
+        if 'default_color' in segment_mappings['shader_dictionary'][shader_ref]:
+            return segment_mappings['shader_dictionary'][shader_ref]['default_color']
+
+    # 5. Fallback to default shader color if nothing else is found
+    if 'default_shader' in segment_mappings.get('shader_dictionary', {}) and 'default_color' in segment_mappings['shader_dictionary']['default_shader']:
+        return segment_mappings['shader_dictionary']['default_shader']['default_color']
+
+    return "#808080" # Final fallback: gray
+
+# --- Import and Export Functions ---
+
+def import_stl_file(filepath, new_name):
+    bpy.ops.import_mesh.stl(filepath=filepath)
+    if bpy.context.selected_objects:
+        obj = bpy.context.selected_objects[0]
+        return _rename_imported_objects(obj, new_name)
+    return []
+
+def import_obj_file(filepath, new_name):
+    bpy.ops.import_scene.obj(filepath=filepath)
+    if bpy.context.selected_objects:
+        return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
+    return []
+
+def import_fbx_file(filepath, new_name):
+    bpy.ops.import_scene.fbx(filepath=filepath)
+    if bpy.context.selected_objects:
+        return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
+    return []
+
+def import_glb_file(filepath, new_name):
+    bpy.ops.import_scene.gltf(filepath=filepath)
+    if bpy.context.selected_objects:
+        return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
+    return []
+
+def import_meshes_into_blender_scene(input_folder_path):
+    """
+    Imports STL mesh files from the specified folder.
+    Imports all .stl files found in the directory.
+    """
+    imported_objects = []
+    print("\n--- Phase: Automatic File Import ---")
+
+    if not os.path.exists(input_folder_path):
+        print(f"  Input folder not found: {input_folder_path}. No meshes to import.")
+        return []
+
+    for filename in os.listdir(input_folder_path):
+        filepath = os.path.join(input_folder_path, filename)
+        name_without_ext = os.path.splitext(filename)[0]
+        file_extension = os.path.splitext(filename)[1].lower()
+
+        if not os.path.isfile(filepath):
+            continue # Skip directories or other non-file entries
+
+        imported_this_file = []
+        if file_extension == '.stl':
+            imported_this_file = import_stl_file(filepath, name_without_ext)
+        else:
+            print(f"  Unsupported file type for '{filename}': {file_extension}. Skipping (only .stl is supported).")
+            continue
+        
+        if imported_this_file:
+            imported_objects.extend(imported_this_file)
+            print(f"  Imported '{filename}' as '{name_without_ext}' (Type: {file_extension.upper()}).")
+        else:
+            print(f"  Failed to import '{filename}'.")
+            
+    if not imported_objects:
+        print(f"  No .stl meshes found in '{input_folder_path}'.")
+    return imported_objects
+
+def export_glb(filepath, root_object_to_export):
+    """Exports the specified root object and its children to GLB format."""
+    bpy.ops.object.select_all(action='DESELECT') # Deselect all first
+
+    if root_object_to_export:
+        # Select the root object and all its children recursively
+        root_object_to_export.select_set(True)
+        for child in root_object_to_export.children_recursive:
+            child.select_set(True)
+        bpy.context.view_layer.objects.active = root_object_to_export # Set active object for export
+    else:
+        print("Warning: No root object provided for GLB export. Exporting all scene objects.")
+        bpy.ops.object.select_all(action='SELECT') # Export all if no specific objects are given
+
+    selected_count = len(bpy.context.selected_objects)
+    print(f"  Exporting {selected_count} objects to GLB: {filepath}")
+    bpy.ops.export_scene.gltf(filepath=filepath, export_extras=True, use_selection=True) # Always use selection if root is provided
+    print(f"Exported GLB: {filepath}")
+    bpy.ops.object.select_all(action='DESELECT') # Deselect all after export
+
+def export_fbx(filepath, objects_to_export):
+    """
+    Exports the specified objects and their children to FBX format.
+    """
+    bpy.ops.object.select_all(action='DESELECT')
+
+    if not objects_to_export:
+        print("Warning: No objects provided for FBX export. Exporting all scene objects.")
+        bpy.ops.object.select_all(action='SELECT')
+    else:
+        for obj in objects_to_export:
+            obj.select_set(True)
+            for child in obj.children_recursive:
+                child.select_set(True)
+        if objects_to_export:
+            bpy.context.view_layer.objects.active = objects_to_export[0]
+
+    selected_count = len(bpy.context.selected_objects)
+    print(f"  Exporting {selected_count} objects to FBX: {filepath}")
+    
+    bpy.ops.export_scene.fbx(
+        filepath=filepath,
+        use_selection=True,
+        mesh_smooth_type='FACE',
+        add_leaf_bones=False,
+        use_armature_deform_only=True,
+        bake_anim=False
+    )
+    print(f"Exported FBX: {filepath}")
+    bpy.ops.object.select_all(action='DESELECT')
+
+
+def save_blender_scene(output_dir, filename):
+    """Saves the current Blender scene to a .blend file."""
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"  Created directory for blend file: {output_dir}")
+
+    filepath = os.path.join(output_dir, filename)
+    bpy.ops.wm.save_as_mainfile(filepath=filepath)
+    print(f"  Blender scene saved to: {filepath}")
+
+
+# --- Scene Management and Cleaning Functions ---
+
+def clear_blender_scene():
+    """Clears all objects from the Blender scene."""
+    print("Clearing Blender scene...")
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+    print("Blender scene cleared.")
+
+def get_all_mesh_objects():
+    """Returns a list of all mesh objects in the current Blender scene."""
+    return [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
+
+def merge_vertices_by_distance(mesh_objects, distance):
+    """Merges vertices in mesh objects within a given distance."""
+    print(f"Performing 'Merge by Distance' for mesh objects with distance: {distance}")
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.remove_doubles(threshold=distance)
+            bpy.ops.object.mode_set(mode='OBJECT')
+            obj.select_set(False)
+            print(f"  Merge vertices on '{obj.name}' completed.")
+    bpy.context.view_layer.update()
+
+def fix_normal_orientation(mesh_objects):
+    """Recalculates normals to point outside for mesh objects."""
+    print("Performing 'Fix Normal Orientation' (Recalculate Outside) for mesh objects.")
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.normals_make_consistent(inside=False)
+            bpy.ops.object.mode_set(mode='OBJECT')
+            obj.select_set(False)
+            print(f"  Normals orientation of '{obj.name}' corrected.")
+    bpy.context.view_layer.update()
+
+def delete_small_features(mesh_objects):
+    """Deletes degenerate geometry (small features) from mesh objects."""
+    print("Performing 'Delete Small Features' (Dissolve Degenerate) for mesh objects.")
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.dissolve_degenerate()
+            bpy.ops.object.mode_set(mode='OBJECT')
+            obj.select_set(False)
+            print(f"  Small features of '{obj.name}' deleted.")
+    bpy.context.view_layer.update()
+
+def decimate_mesh_objects(mesh_objects, max_faces_limit):
+    """Decimates mesh objects to reduce face count."""
+    print(f"Performing 'Decimation' for mesh objects with limit: {max_faces_limit} faces per object.")
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
+            current_faces = len(obj.data.polygons)
+            print(f"  Object '{obj.name}': {current_faces} current faces.")
+
+            if current_faces > max_faces_limit:
+                ratio = max_faces_limit / current_faces
+                print(f"  Reduction needed for '{obj.name}'. Ratio: {ratio:.4f}")
+
+                mod = obj.modifiers.new(name="DecimateMod", type='DECIMATE')
+                mod.decimate_type = 'COLLAPSE'
+                mod.ratio = ratio
+
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.select_all(action='DESELECT')
+                obj.select_set(True)
+                
+                if bpy.ops.object.mode_set.poll():
+                    bpy.ops.object.mode_set(mode='OBJECT')
+                
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+                obj.select_set(False)
+                
+                new_faces = len(obj.data.polygons)
+                print(f"  Decimation on '{obj.name}' completed. New faces: {new_faces}.")
+            else:
+                print(f"  Decimation not needed for '{obj.name}'. Current faces: {current_faces}.")
+    bpy.context.view_layer.update()
+
+def apply_smoothing_normals(mesh_objects, method='WEIGHTED', average_type='CORNER_ANGLE'):
+    """Applies smoothing to normals of mesh objects."""
+    print(f"\n--- Phase: Applying Normal Smoothing ({method}) ---")
+    for obj in mesh_objects:
+        if obj.type != 'MESH':
+            print(f"  Skipping '{obj.name}': non e' un oggetto mesh.")
+            continue
+
+        bpy.ops.object.select_all(action='DESELECT')
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        if method == 'WEIGHTED':
+            if "WeightedNormalsMod" in obj.modifiers:
+                obj.modifiers.remove(obj.modifiers["WeightedNormalsMod"])
+                print(f"  Removed existing WeightedNormalsMod from '{obj.name}'.")
+
+            mod = obj.modifiers.new(name="WeightedNormalsMod", type='WEIGHTED_NORMAL')
+            mod.keep_sharp = True
+
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+            bpy.ops.object.shade_smooth()
+            print(f"  Applied Weighted Normals and Shade Smooth to '{obj.name}'.")
+
+        elif method == 'AVERAGE':
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.average_normals(average_type=average_type)
+            bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.ops.object.shade_smooth()
+            print(f"  Normals of '{obj.name}' averaged ({average_type}) and Shade Smooth applied.")
+        else:
+            print(f"  Smoothing method '{method}' not recognized. Skipping for '{obj.name}'.")
+        
+        obj.select_set(False)
+    bpy.context.view_layer.update()
+
+def apply_all_modifiers(mesh_objects):
+    """Applies all modifiers on the given mesh objects."""
+    print("\n--- Phase: Applying All Modifiers ---")
+    for obj in mesh_objects:
+        if obj.type != 'MESH':
+            print(f"  Skipping '{obj.name}': non e' un oggetto mesh.")
+            continue
+
+        bpy.ops.object.select_all(action='DESELECT')
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Apply all modifiers one by one
+        # Iterate over a copy of the modifiers list, as applying them removes them from the original list
+        for modifier in list(obj.modifiers):
+            try:
+                bpy.ops.object.modifier_apply(modifier=modifier.name)
+                print(f"  Applied modifier '{modifier.name}' to '{obj.name}'.")
+            except RuntimeError as e:
+                print(f"  Warning: Could not apply modifier '{modifier.name}' to '{obj.name}': {e}")
+        obj.select_set(False)
+    bpy.context.view_layer.update()
+
+def create_single_scene_root(mesh_objects, world_center_target, root_name_base):
+    """
+    Creates a single empty object at the world center and parents all mesh_objects to it.
+    This maintains their relative positions while providing a unified root for the scene.
+    Returns the created root object.
+    """
+    print("\n--- Phase: Creating Single Scene Root ---")
+    
+    # Deselect all objects first
+    bpy.ops.object.select_all(action='DESELECT')
+
+    # Create the single root empty object
+    root_name = f"{root_name_base}_Root"
+    root_object = bpy.data.objects.get(root_name)
+    if not root_object:
+        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=world_center_target)
+        root_object = bpy.context.active_object
+        root_object.name = root_name
+        print(f"  Created single Root object: '{root_object.name}' at {world_center_target}.")
+    else:
+        root_object.location = world_center_target
+        print(f"  Root object '{root_object.name}' already exists. Location updated to {root_object.location}.")
+
+    # Parent all mesh objects to this single root
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
+            # Ensure object is in object mode before parenting
+            if bpy.ops.object.mode_set.poll():
+                bpy.ops.object.mode_set(mode='OBJECT')
+            
+            # Clear any existing parent first to avoid issues
+            if obj.parent:
+                obj.parent = None
+                print(f"  Cleared existing parent for '{obj.name}'.")
+
+            obj.parent = root_object
+            # Keep transform (important to maintain relative position)
+            obj.matrix_parent_inverse = root_object.matrix_world.inverted()
+            print(f"  '{obj.name}' parented to '{root_object.name}'.")
+
+    bpy.context.view_layer.update()
+    print(f"  Single scene root '{root_object.name}' created and meshes parented.")
+    return root_object
+
+# --- Material Application Functions ---
+
+def enrich_segment_data_with_materials(segments_manifest, blender_shader_registry):
+    """
+    Enriches the segment manifest with Blender-specific material data.
+    This function contains all the fallback logic for deciding which material to use.
+    """
+    print("\n--- Enriching Manifest with Material Data ---")
+    shader_ref_map = blender_shader_registry.get('shader_ref', {})
+    category_shader_map = blender_shader_registry.get('biological_categories', {})
+    snomed_type_shader_map = blender_shader_registry.get('snomed_types', {})
+    default_shader_ref = "default_shader"
+
+    for seg_name, seg_data in segments_manifest.items():
+        shader_ref_to_use = None
+        category = seg_data.get('custom_parameters', {}).get('biological_category', 'Other')
+        snomed_type = seg_data.get('snomed_details', {}).get('type')
+
+        # 1. Direct Match Logic: Check for a shader named after the segment itself
+        potential_direct_ref = f"{seg_name}_shader"
+        if potential_direct_ref in shader_ref_map:
+            shader_ref_to_use = potential_direct_ref
+            print(f"DEBUG:  Segment '{seg_name}' -> Direct Match: '{shader_ref_to_use}'.")
+        
+        # 2. SNOMED Type Match Logic (Medium-High Priority)
+        elif snomed_type and snomed_type in snomed_type_shader_map:
+            shader_ref_to_use = snomed_type_shader_map[snomed_type]
+
+        # 3. Biological Category Match Logic
+        elif category and category in category_shader_map:
+            shader_ref_to_use = category_shader_map[category]
+
+        # 4. Fallback to Default
+        else:
+            shader_ref_to_use = default_shader_ref
+
+        # Get material details from the chosen shader_ref
+        shader_details = shader_ref_map.get(shader_ref_to_use, {})
+        seg_data['custom_parameters']['shader_ref'] = shader_ref_to_use
+        seg_data['custom_parameters']['blend_file'] = shader_details.get('blend_file')
+        seg_data['custom_parameters']['blend_material'] = shader_details.get('blend_material')
+        
+        print(f"DEBUG:  Segment '{seg_name}' -> Category '{category}' -> Shader Ref '{shader_ref_to_use}' -> Material '{shader_details.get('blend_material')}'.")
+
+    return segments_manifest
+
+def apply_materials_from_manifest(imported_meshes, enriched_manifest):
+    """
+    Applies materials to meshes based on the pre-enriched manifest.
+    This function is a simple executor, with no decision logic.
+    """
+    print("\n--- Applying Materials from Enriched Manifest ---")
+    materials_to_append = {}  # {mat_name: blend_file_path}
+
+    # First, determine which object corresponds to which entry in the manifest
+    # and gather all unique materials that need to be appended.
+    for obj in imported_meshes:
+        # The object name should match a key in the manifest.
+        # This includes individual segments and combined meshes.
+        obj_name_in_manifest = obj.name
+        
+        if obj_name_in_manifest in enriched_manifest:
+            mat_details = enriched_manifest[obj_name_in_manifest].get('custom_parameters', {})
+            mat_name = mat_details.get('blend_material')
+            blend_file = mat_details.get('blend_file')
+
+            if mat_name and blend_file:
+                if mat_name not in materials_to_append:
+                    materials_to_append[mat_name] = os.path.join(config.SHADERS_DIR, blend_file)
+                # Store the final material name directly on the object for the next step
+                obj['material_to_assign'] = mat_name
+            else:
+                print(f"  WARNING: Material details missing for '{obj_name_in_manifest}' in manifest.")
+        else:
+            print(f"  WARNING: Object '{obj.name}' not found in manifest. Cannot assign material.")
+
+    # --- Append all unique materials in one go ---
+    for mat_name, blend_path in materials_to_append.items():
+        if mat_name and mat_name not in bpy.data.materials:
+            try:
+                bpy.ops.wm.append(
+                    filepath=os.path.join(blend_path, 'Material', mat_name),
+                    directory=os.path.join(blend_path, 'Material'),
+                    filename=mat_name
+                )
+                print(f"  Appended material '{mat_name}' from '{os.path.basename(blend_path)}'.")
+            except Exception as e:
+                print(f"  ERROR appending material '{mat_name}': {e}")
+
+    # --- Apply the assigned material to each object ---
+    for obj in imported_meshes:
+        mat_name = obj.get('material_to_assign')
+        if mat_name:
+            material = bpy.data.materials.get(mat_name)
+            if material:
+                if obj.data.materials:
+                    obj.data.materials[0] = material
+                else:
+                    obj.data.materials.append(material)
+                print(f"  Applied material '{mat_name}' to '{obj.name}'.")
+            else:
+                print(f"  ERROR: Material '{mat_name}' not found after append for object '{obj.name}'.")
+
+# --- Bake Functions ---
+
+def uv_map(mesh_objects, texture_size):
+    print("\n--- Phase: UV Mapping ---")
+    for obj in mesh_objects:
+        if not obj or obj.type != 'MESH':
+            print(f"Object '{obj.name}' not found or not a mesh. Skipping UV Map.")
+            continue
+
+        print(f"  Creating/Updating UV Map for '{obj.name}'...")
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+
+        # Remove all existing UV layers to recreate from scratch
+        while obj.data.uv_layers:
+            obj.data.uv_layers.remove(obj.data.uv_layers[0])
+        print(f"  Removed all existing UV maps for '{obj.name}'.")
+
+        uv_map_name = "UVMap"
+        new_uv_layer = obj.data.uv_layers.new(name=uv_map_name)
+        print(f"  Created new UV map '{uv_map_name}' for '{obj.name}'.")
+        
+        new_uv_layer.active = True
+        new_uv_layer.active_render = True
+
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        # Smart UV Project parameters: angle_limit, island_margin, area_weight, correct_aspect, scale_to_bounds
+        bpy.ops.uv.smart_project(angle_limit=66.0, island_margin=0.02, area_weight=0.0, correct_aspect=True, scale_to_bounds=True)
+        
+        bpy.ops.object.mode_set(mode='OBJECT')
+        obj.select_set(False)
+        print(f"  UV map for '{obj.name}' created/updated with Smart UV Project.")
+    bpy.context.view_layer.update()
+
+def bake_setup(device):
+
+    """Configures Cycles rendering engine for baking."""
+    print("\n--- Phase: Bake Setup ---")
+    # Configurazione Cycles for baking
+    if bpy.context.preferences.addons["cycles"].preferences.compute_device_type != device:
+        bpy.context.preferences.addons["cycles"].preferences.compute_device_type = "CUDA" # Default to CUDA, can be overridden by 'device' param if needed
+    bpy.context.scene.cycles.device = device
+    
+    # Enable all available devices for the chosen compute type
+    bpy.context.preferences.addons["cycles"].preferences.get_devices()
+    print(f"  Compute Device Type: {bpy.context.preferences.addons['cycles'].preferences.compute_device_type}")
+    for d in bpy.context.preferences.addons["cycles"].preferences.devices:
+        d["use"] = 1
+        print(f"  Device: {d['name']}, Enabled: {d['use']}")
+
+    bpy.context.scene.render.engine = 'CYCLES'
+    bpy.context.scene.cycles.device = device
+    print(f"  Cycles render engine and {device} device set for baking.")
+
+
+def bake_channel(mesh_object, channel_type, textures_dir, texture_size, color_space):
+    """Generic function to bake a specific channel (Color, Normal, Roughness, etc.)."""
+    obj_name = mesh_object.name
+    print(f"Baking {channel_type.capitalize()} for '{obj_name}'...")
+    obj = mesh_object
+    
+    if not obj or obj.type != 'MESH' or not obj.data.materials:
+        print(f"Object '{obj_name}' not found, is not a mesh, or has no materials. Skipping bake.")
+        return False
+    
+    # Select the mesh
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+
+    # Get mesh material
+    mat = obj.data.materials[0] # Assumes material is at index 0
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+
+    # Create texture node for the bake
+    image_name = f"{obj_name}_{channel_type.lower()}"
+    tex_node = nodes.new("ShaderNodeTexImage")
+    tex_node.name = image_name # Assegna un nome specifico basato sull'oggetto e sul canale
+    print(f"DEBUG:  Created Image Texture Node '{tex_node.name}' for bake.")
+
+    # Determine if the image should have an alpha channel (Diffuse channel use alpha as transparency)
+    create_alpha = False
+    if channel_type.lower() == 'diffuse':
+        create_alpha = True
+
+    # Create or reuse (in case of multiple bake) image data
+    image = bpy.data.images.get(image_name)
+    if not image:
+        image = bpy.data.images.new(name=image_name, width=texture_size, height=texture_size, alpha=create_alpha)
+        print(f"  Created new image data '{image_name}'.")
+    else:
+        # If image exists, ensure its size matches
+        if image.size[0] != texture_size or image.size[1] != texture_size:
+            image.scale(texture_size, texture_size)
+            print(f"  Resized existing image '{image_name}' to {texture_size}x{texture_size}.")
+        print(f"  Reusing existing image data '{image_name}'.")
+
+    image.colorspace_settings.name = color_space
+    tex_node.image = image # Assign the image to the node
+
+    # Select Texture node...
+    nodes.active = tex_node
+    tex_node.select = True
+
+    # ...in Object mode
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='OBJECT')
+    
+    bake_args = {
+        'type': channel_type.upper(),
+        'target': 'IMAGE_TEXTURES',
+        'width': texture_size,
+        'height': texture_size,
+        'margin': 8, # Margine per evitare bleed
+        # 'selected_to_active': False # Rimosso: Blender 4.2.10 non lo riconosce per il bake su se stesso
+    }
+
+    # Adjust bake arguments for each bake type
+    if channel_type.upper() == 'NORMAL':
+        bake_args['normal_space'] = 'TANGENT'
+        bake_args['normal_r'] = 'POS_X'
+        bake_args['normal_g'] = 'POS_Y'
+        bake_args['normal_b'] = 'POS_Z'
+    elif channel_type.upper() == 'DIFFUSE':
+        bake_args['pass_filter'] = {'COLOR'}
+
+
+    print(f"  Performing {channel_type.lower()} bake for '{obj_name}'...")
+    bpy.ops.object.bake(**bake_args) 
+    
+    # Save the image with the correct path
+    image.filepath_raw = os.path.join(textures_dir, f"{obj_name}_{channel_type.lower()}.png")
+    image.file_format = 'PNG'
+    image.save()
+    print(f"  Baked {channel_type.capitalize()} saved to {image.filepath_raw}")
+    
+    # Deselect the image node for subsequent bakes
+    obj.select_set(False)
+    tex_node.select = False
+    return tex_node.name
+
+def bake_textures(imported_meshes, textures_dir, texture_size, blender_device):
+    """Orchestrates baking of Color, Normal, and Roughness textures for all meshes."""
+    created_bake_nodes = []
+
+    for obj in imported_meshes:
+        if obj.type != 'MESH':
+            continue # Skip non-mesh objects
+
+        # Bake Albedo (Diffuse)
+        node= bake_channel(obj, 'diffuse', textures_dir, texture_size, 'sRGB') # 'diffuse' for albedo
+        if node:
+            created_bake_nodes.append(node)
+
+        # Bake Normal
+        node= bake_channel(obj, 'normal', textures_dir, texture_size, 'Non-Color')
+        if node: 
+            created_bake_nodes.append(node)
+        # Bake Roughness
+        node= bake_channel(obj, 'roughness', textures_dir, texture_size, 'Non-Color')
+        if node:
+            created_bake_nodes.append(node)
+    return created_bake_nodes
+
+def remove_bake_temp_nodes(node_names_to_remove): # <--- Accetta NOMI, non oggetti Node
+    """Removes specific temporary bake/linking nodes from all materials based on their names."""
+    print("\n--- Phase: Removing Temporary Bake Texture Nodes ---")
+
+    nodes_removed_count = 0
+    # Iteriamo su tutti i materiali presenti nella scena
+    for mat in bpy.data.materials:
+        if mat.use_nodes:
+            nodes = mat.node_tree.nodes
+            # Creiamo una copia della lista dei nodi perché stiamo modificando la collezione mentre iteriamo
+            for node_name in list(node_names_to_remove): # Iteriamo sui NOMI che vogliamo rimuovere
+                if node_name in nodes: # Verifichiamo se un nodo con quel NOME esiste in QUESTO materiale
+                    try:
+                        nodes.remove(nodes[node_name])
+                        print(f"  Removed temporary bake/linking node '{node_name}' from material '{mat.name}'.")
+                        nodes_removed_count += 1
+                    except Exception as e:
+                        print(f"  Error removing node '{node_name}' from material '{mat.name}': {e}")
+                # else: # Questo 'else' puo' essere rumoroso, puoi commentarlo
+                #     print(f"  Node '{node_name}' not found in material '{mat.name}'.")
+    
+    print(f"  Total {nodes_removed_count} temporary bake nodes removed across all materials.")
+    bpy.context.view_layer.update()
+
+def OLD_remove_bake_temp_nodes(mesh_objects):
+    """Removes temporary bake texture nodes from materials."""
+    print("\n--- Phase: Removing Temporary Bake Texture Nodes ---")
+    for obj in mesh_objects:
+        if not obj or not obj.data.materials:
+            continue
+        
+        mat = obj.data.materials[0] # Assumes material is at index 0
+        if not mat or not mat.use_nodes:
+            continue
+            
+        nodes = mat.node_tree.nodes
+        
+        # Nodes that might have been created for baking
+        node_names_to_check = [
+            f"{obj.name}_diffuse", 
+            f"{obj.name}_normal",
+            f"{obj.name}_roughness",
+            f"{obj.name}_metallic", # Added for the new base metallic map
+            f"NormalMap_{obj.name}", # Also the temporary Normal Map node
+            f"{obj.name}_MetallicSmoothness_map" # Added for MetallicSmoothness node
+        ]
+        
+        nodes_to_remove = []
+        for node_name in node_names_to_check:
+            if node_name in nodes:
+                nodes_to_remove.append(nodes[node_name])
+        
+        for node_to_remove in nodes_to_remove:
+            # Store the name BEFORE removing the node
+            node_name_for_print = node_to_remove.name 
+            nodes.remove(node_to_remove)
+            print(f"  Removed temporary bake/linking node '{node_name_for_print}' from '{obj.name}'.")
+    bpy.context.view_layer.update()
+
+def OLD_link_baked_textures(imported_meshes, textures_dir):
+    """Links baked textures to the Principled BSDF node in the material of each mesh."""
+    print("\n--- Phase: Linking Baked Texture Nodes (PBR Standard for GLB/General) ---")
+    for obj in imported_meshes:
+        if not obj or not obj.data.materials:
+            continue
+        
+        mat = obj.data.materials[0] # Assumes material is at index 0
+        if not mat or not mat.use_nodes:
+            continue
+            
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+        
+        principled_bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if not principled_bsdf:
+            print(f"  Principled BSDF node not found in material of '{obj.name}'. Skipping linking.")
+            continue
+
+        # Load and link Albedo (Diffuse) Image
+        albedo_img_path = os.path.join(textures_dir, f"{obj.name}_diffuse.png")
+        if os.path.exists(albedo_img_path):
+            albedo_image = bpy.data.images.load(albedo_img_path)
+            albedo_image_node = nodes.new('ShaderNodeTexImage')
+            albedo_image_node.image = albedo_image
+            albedo_image_node.label = "Baked Albedo"
+            albedo_image_node.location = (-800, 300)
+            albedo_image_node.interpolation = 'Linear'
+            albedo_image.colorspace_settings.name = 'sRGB'
+            # Clear existing links to Base Color
+            if 'Base Color' in principled_bsdf.inputs:
+                for link in principled_bsdf.inputs['Base Color'].links: links.remove(link)
+                links.new(albedo_image_node.outputs['Color'], principled_bsdf.inputs['Base Color'])
+                print(f"  Linked Albedo map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Base Color' input for '{obj.name}'.")
+
+
+        # Load and link Normal Image
+        normal_img_path = os.path.join(textures_dir, f"{obj.name}_normal.png")
+        if os.path.exists(normal_img_path):
+            normal_image = bpy.data.images.load(normal_img_path)
+            normal_image_node = nodes.new('ShaderNodeTexImage')
+            normal_image_node.image = normal_image
+            normal_image_node.label = "Baked Normal"
+            normal_image_node.location = (-800, 0)
+            normal_image_node.interpolation = 'Linear'
+            normal_image.colorspace_settings.name = 'Non-Color' # Important for normals
+            
+            normal_map_node = nodes.new('ShaderNodeNormalMap')
+            normal_map_node.label = "Normal Map"
+            normal_map_node.location = (-600, 0)
+            
+            links.new(normal_image_node.outputs['Color'], normal_map_node.inputs['Color'])
+            # Clear existing links to Normal
+            if 'Normal' in principled_bsdf.inputs: # Check if input exists
+                for link in principled_bsdf.inputs['Normal'].links: links.remove(link)
+                links.new(normal_map_node.outputs['Normal'], principled_bsdf.inputs['Normal'])
+                print(f"  Linked Normal map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Normal' input for '{obj.name}'.")
+
+
+        # Load and link Roughness Image (for PBR standard)
+        roughness_img_path = os.path.join(textures_dir, f"{obj.name}_roughness.png")
+        if os.path.exists(roughness_img_path):
+            roughness_image = bpy.data.images.load(roughness_img_path)
+            roughness_image_node = nodes.new('ShaderNodeTexImage')
+            roughness_image_node.image = roughness_image
+            roughness_image_node.label = "Baked Roughness"
+            roughness_image_node.location = (-800, -300)
+            roughness_image_node.interpolation = 'Linear'
+            roughness_image.colorspace_settings.name = 'Non-Color' # Important for roughness
+            # Clear existing links to Roughness
+            if 'Roughness' in principled_bsdf.inputs:
+                for link in principled_bsdf.inputs['Roughness'].links: links.remove(link)
+                links.new(roughness_image_node.outputs['Color'], principled_bsdf.inputs['Roughness'])
+                print(f"  Linked Roughness map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Roughness' input for '{obj.name}'.")
+
+        # Load and link Metallic Image (for PBR Adobe workflow)
+        metallic_img_path = os.path.join(textures_dir, f"{obj.name}_metallic.png")
+        if os.path.exists(metallic_img_path):
+            metallic_image = bpy.data.images.load(metallic_img_path)
+            metallic_image_node = nodes.new('ShaderNodeTexImage')
+            metallic_image_node.image = metallic_image
+            metallic_image_node.label = "Baked Metallic"
+            metallic_image_node.location = (-800, -600) # Position below roughness
+            metallic_image_node.interpolation = 'Linear'
+            metallic_image.colorspace_settings.name = 'Non-Color' # Important for data
+            # Clear existing links to Metallic
+            if 'Metallic' in principled_bsdf.inputs:
+                for link in principled_bsdf.inputs['Metallic'].links: links.remove(link)
+                links.new(metallic_image_node.outputs['Color'], principled_bsdf.inputs['Metallic'])
+                print(f"  Linked Metallic map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Metallic' input for '{obj.name}'.")
+
+    bpy.context.view_layer.update()
+
+def link_baked_textures(imported_meshes, textures_dir):
+    """Links baked textures to the Principled BSDF node in the material of each mesh."""
+    print("\n--- Phase: Linking Baked Texture Nodes (PBR Standard for GLB/General) ---")
+    
+    # Lista per raccogliere i nodi temporanei creati da questa funzione
+    # (es. Normal Map Node) che dovranno essere puliti alla fine.
+    nodes_created_by_linking = [] 
+
+    for obj in imported_meshes:
+        if not obj or not obj.data.materials:
+            continue
+        
+        mat = obj.data.materials[0] # Assumes material is at index 0
+        if not mat or not mat.use_nodes:
+            continue
+            
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+        
+        principled_bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if not principled_bsdf:
+            print(f"  Principled BSDF node not found in material of '{obj.name}'. Skipping linking.")
+            continue
+
+        # --- IMPORTANT: REUSE EXISTING NODES INSTEAD OF CREATING NEW ONES ---
+
+        # 1. Albedo (Diffuse)
+        # Search for the node created during bake_channel
+        albedo_image_node = nodes.get(f"{obj.name}_diffuse") 
+        if albedo_image_node and albedo_image_node.image: # Ensure node exists and has an image
+            # No need to load image again, it's already assigned during bake
+            albedo_image_node.label = "Baked Albedo"
+            albedo_image_node.location = (-800, 300) # Re-position as needed
+            albedo_image_node.interpolation = 'Linear' # Ensure interpolation is set
+            albedo_image_node.image.colorspace_settings.name = 'sRGB' # Ensure colorspace is set
+            
+            if 'Base Color' in principled_bsdf.inputs:
+                for link in principled_bsdf.inputs['Base Color'].links: links.remove(link)
+                links.new(albedo_image_node.outputs['Color'], principled_bsdf.inputs['Base Color'])
+                print(f"  Linked Albedo map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Base Color' input for '{obj.name}'.")
+        else:
+            print(f"  Baked Albedo node/image not found for '{obj.name}'. Skipping Albedo linking.")
+
+        # 2. Normal
+        normal_image_node = nodes.get(f"{obj.name}_normal")
+        if normal_image_node and normal_image_node.image:
+            normal_image_node.label = "Baked Normal"
+            normal_image_node.location = (-800, 0)
+            normal_image_node.interpolation = 'Linear'
+            normal_image_node.image.colorspace_settings.name = 'Non-Color' 
+            
+            normal_map_node = nodes.new('ShaderNodeNormalMap') # This is a new node, needs to be tracked
+            normal_map_node.label = "Normal Map"
+            normal_map_node.name = f"{obj.name}_NormalMapNode"
+            normal_map_node.location = (-600, 0)
+            nodes_created_by_linking.append(normal_map_node.name) # Track this node for later removal
+            
+            links.new(normal_image_node.outputs['Color'], normal_map_node.inputs['Color'])
+            if 'Normal' in principled_bsdf.inputs:
+                for link in principled_bsdf.inputs['Normal'].links: links.remove(link)
+                links.new(normal_map_node.outputs['Normal'], principled_bsdf.inputs['Normal'])
+                print(f"  Linked Normal map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Normal' input for '{obj.name}'.")
+        else:
+            print(f"  Baked Normal node/image not found for '{obj.name}'. Skipping Normal linking.")
+
+        # 3. Roughness
+        roughness_image_node = nodes.get(f"{obj.name}_roughness")
+        if roughness_image_node and roughness_image_node.image:
+            roughness_image_node.label = "Baked Roughness"
+            roughness_image_node.location = (-800, -300)
+            roughness_image_node.interpolation = 'Linear'
+            roughness_image_node.image.colorspace_settings.name = 'Non-Color' 
+            
+            if 'Roughness' in principled_bsdf.inputs:
+                for link in principled_bsdf.inputs['Roughness'].links: links.remove(link)
+                links.new(roughness_image_node.outputs['Color'], principled_bsdf.inputs['Roughness'])
+                print(f"  Linked Roughness map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Roughness' input for '{obj.name}'.")
+        else:
+            print(f"  Baked Roughness node/image not found for '{obj.name}'. Skipping Roughness linking.")
+
+        # 4. Metallic (for PBR Adobe workflow, from create_base_metalness_map)
+        # Assuming create_base_metalness_map creates a new image and names it obj.name_metallic
+        metallic_image_node = nodes.get(f"{obj.name}_metallic") 
+        if metallic_image_node and metallic_image_node.image:
+            metallic_image_node.label = "Baked Metallic"
+            metallic_image_node.location = (-800, -600)
+            metallic_image_node.interpolation = 'Linear'
+            metallic_image_node.image.colorspace_settings.name = 'Non-Color'
+            
+            if 'Metallic' in principled_bsdf.inputs:
+                for link in principled_bsdf.inputs['Metallic'].links: links.remove(link)
+                links.new(metallic_image_node.outputs['Color'], principled_bsdf.inputs['Metallic'])
+                print(f"  Linked Metallic map to Principled BSDF for '{obj.name}'.")
+            else:
+                print(f"  Warning: Principled BSDF has no 'Metallic' input for '{obj.name}'.")
+        else:
+            print(f"  Baked Metallic node/image not found for '{obj.name}'. Skipping Metallic linking.")
+
+    bpy.context.view_layer.update()
+    return nodes_created_by_linking # Return any new nodes created by this function
+
+def create_metallic_smoothness_map(mesh_objects, textures_dir, texture_size):
+    """
+    Creates a combined MetallicSmoothness map for Unity (Universal Render Pipeline - URP)
+    from the baked Roughness map.
+    Unity URP MetallicSmoothness Map:
+    - R channel: Metalness (from G of original Roughness)
+    - G channel: Occlusion (set to 0.0 or from separate AO bake)
+    - B channel: Detail Mask (set to 0.0)
+    - A channel: Smoothness (1 - Roughness, from G of original Roughness)
+    """
+    print("\n--- Phase: Creating MetallicSmoothness Map for Unity ---")
+    for obj in mesh_objects:
+        obj_name = obj.name
+        roughness_path = os.path.join(textures_dir, f"{obj_name}_roughness.png")
+        metallic_smoothness_output_path = os.path.join(textures_dir, f"{obj_name}_MetallicSmoothness.png")
+
+        if not os.path.exists(roughness_path):
+            print(f"  Roughness texture missing for {obj_name} at {roughness_path}. Skipping MetallicSmoothness creation.")
+            continue
+
+        metallic_smoothness_name = f"{obj_name}_MetallicSmoothness"
+        if metallic_smoothness_name in bpy.data.images:
+            bpy.data.images.remove(bpy.data.images[metallic_smoothness_name], do_unlink=True)
+            print(f"  Removed existing MetallicSmoothness image '{metallic_smoothness_name}'.")
+
+        roughness_img = bpy.data.images.load(roughness_path)
+        
+        metallic_smoothness_img = bpy.data.images.new(
+            name=metallic_smoothness_name,
+            width=texture_size,
+            height=texture_size,
+            alpha=True # Required for alpha channel
+        )
+        metallic_smoothness_img.colorspace_settings.name = 'Non-Color'
+
+        print(f"  Processing MetallicSmoothness texture for {obj_name}...")
+        
+        # Ensure roughness_img.pixels is flat before reshaping
+        # Check the number of channels (RGBA = 4)
+        if len(roughness_img.pixels) != texture_size * texture_size * 4:
+            print(f"  Error: Unexpected pixel count for roughness image {obj_name}. Expected {texture_size * texture_size * 4}, got {len(roughness_img.pixels)}. Cannot create MetallicSmoothness map.")
+            bpy.data.images.remove(roughness_img) # Clean up
+            continue
+
+        pixels = np.array(list(roughness_img.pixels)).reshape((texture_size, texture_size, 4)) # Reshape to (H, W, RGBA)
+        
+        metallic_smoothness_pixels = np.zeros_like(pixels) # Initialize with zeros, preserving shape
+        
+        # R (Metallic): From Green channel of original Roughness map (assuming it contains metalness)
+        # For biological models, metalness is often 0.0. Adjust as per your material definition.
+        metallic_smoothness_pixels[:,:,0] = pixels[:,:,1] # Copy Green channel to Red
+
+        # G (Occlusion): Set to 0.0 (or from separate AO bake if available)
+        metallic_smoothness_pixels[:,:,1] = 0.0 
+        
+        # B (Detail Mask): Set to 0.0
+        metallic_smoothness_pixels[:,:,2] = 0.0 
+        
+        # A (Smoothness): 1 - (Green channel of original Roughness)
+        metallic_smoothness_pixels[:,:,3] = 1.0 - pixels[:,:,1] 
+
+        # Flatten the array back to a 1D list for Blender
+        metallic_smoothness_img.pixels = metallic_smoothness_pixels.ravel().tolist()
+        
+        metallic_smoothness_img.filepath_raw = metallic_smoothness_output_path
+        metallic_smoothness_img.file_format = 'PNG'
+        metallic_smoothness_img.save()
+        
+        # Clean up the loaded roughness image from Blender's memory if no longer needed
+        bpy.data.images.remove(roughness_img, do_unlink=True)
+        print(f"  Created MetallicSmoothness texture for {obj_name} at {metallic_smoothness_output_path}")
+        
+
+def create_base_metalness_map(mesh_objects, textures_dir, texture_size):
+    """
+    Creates a base Metalness map (metallic.png) for PBR Adobe workflow
+    from the green channel of the baked Roughness map.
+    The green channel of the roughness map is replicated across R, G, B channels.
+    """
+    print("\n--- Phase: Creating Base Metalness Map (for PBR Adobe workflow) ---")
+    for obj in mesh_objects:
+        obj_name = obj.name
+        roughness_path = os.path.join(textures_dir, f"{obj_name}_roughness.png")
+        metallic_output_path = os.path.join(textures_dir, f"{obj_name}_metallic.png")
+
+        if not os.path.exists(roughness_path):
+            print(f"  Roughness texture missing for {obj_name} at {roughness_path}. Skipping base metalness creation.")
+            continue
+
+        metallic_name = f"{obj_name}_metallic"
+        if metallic_name in bpy.data.images:
+            bpy.data.images.remove(bpy.data.images[metallic_name], do_unlink=True)
+            print(f"  Removed existing base metalness image '{metallic_name}'.")
+
+        roughness_img = bpy.data.images.load(roughness_path)
+        
+        metallic_img = bpy.data.images.new(
+            name=metallic_name,
+            width=texture_size,
+            height=texture_size,
+            alpha=False # Metalness is typically RGB, no alpha
+        )
+        metallic_img.colorspace_settings.name = 'Non-Color' # Important for data
+
+        print(f"  Processing base metalness texture for {obj_name}...")
+        
+        if len(roughness_img.pixels) != texture_size * texture_size * 4:
+            print(f"  Error: Unexpected pixel count for roughness image {obj_name}. Expected {texture_size * texture_size * 4}, got {len(roughness_img.pixels)}. Cannot create base metalness map.")
+            bpy.data.images.remove(roughness_img) # Clean up
+            continue
+
+        #Initialize with 4 channels (RGBA) and explicitly set alpha to 1.0
+        base_metalness_pixels = np.zeros((texture_size, texture_size, 4)) 
+        pixels_from_roughness = np.array(list(roughness_img.pixels)).reshape((texture_size, texture_size, 4)) # Reshape to (H, W, RGBA)
+        
+        # Replicate green channel of roughness to R, G, B of metalness
+        base_metalness_pixels[:,:,0] = pixels_from_roughness[:,:,1] # Red from Roughness Green
+        base_metalness_pixels[:,:,1] = pixels_from_roughness[:,:,1] # Green from Roughness Green
+        base_metalness_pixels[:,:,2] = pixels_from_roughness[:,:,1] # Blue from Roughness Green
+        base_metalness_pixels[:,:,3] = 1.0 # Set Alpha to 1.0 (fully opaque)
+
+        metallic_img.pixels = base_metalness_pixels.ravel().tolist()
+        
+        metallic_img.filepath_raw = metallic_output_path
+        metallic_img.file_format = 'PNG'
+        metallic_img.save()
+        
+        # Clean up the loaded roughness image from Blender's memory if no longer needed
+        bpy.data.images.remove(roughness_img, do_unlink=True)
+        print(f"  Created base metalness texture for {obj_name} at {metallic_output_path}")
+
+def update_shader_nodes_for_unity_export(imported_meshes, textures_dir):
+    """
+    Updates material nodes to use the combined MetallicSmoothness texture for Unity export consistency.
+    This function should be called AFTER create_metallic_smoothness_map.
+    Returns a list of all *new* nodes created by this function (MetallicSmoothness, Invert).
+    """
+    print("\n--- Phase: Updating Shader Nodes for Unity (Metallic/Smoothness) ---")
+    
+    # Lista per raccogliere i nodi temporanei creati da questa funzione
+    nodes_created_by_unity_export_setup = []
+
+    for obj in imported_meshes:
+        obj_name = obj.name
+        if not obj or not obj.data.materials:
+            print(f"Object '{obj_name}' not found or has no materials. Skipping shader update.")
+            continue
+            
+        mat = obj.data.materials[0] # Assumes material is at index 0
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+
+        mat.use_nodes = True # Ensure nodes are enabled
+        principled_bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if not principled_bsdf:
+            print(f"  Principled BSDF node not found in material of '{obj.name}'. Cannot link MetallicSmoothness.")
+            continue
+
+        # Remove old Roughness and Metallic links if present
+        if 'Roughness' in principled_bsdf.inputs:
+            for link in principled_bsdf.inputs['Roughness'].links: links.remove(link)
+            print(f"  Removed old Roughness link for '{obj.name}'.")
+        if 'Metallic' in principled_bsdf.inputs:
+            for link in principled_bsdf.inputs['Metallic'].links: links.remove(link)
+            print(f"  Removed old Metallic link for '{obj.name}'.")
+
+        # # Remove the old roughness and metallic image nodes if present
+        # # This is good. It cleans up nodes that link_baked_textures might have set up.
+        # roughness_node_name = f"{obj_name}_roughness" # This is the name used by bake_channel
+        # metallic_node_name = f"{obj_name}_metallic" # This is the name used by create_base_metalness_map
+        
+        # if roughness_node_name in nodes:
+        #     nodes.remove(nodes[roughness_node_name])
+        #     print(f"  Removed old roughness node '{roughness_node_name}' for '{obj.name}'.")
+        # if metallic_node_name in nodes: # Corrected from metallic_old_node_name
+        #     nodes.remove(nodes[metallic_node_name])
+        #     print(f"  Removed old metallic node '{metallic_node_name}' for '{obj.name}'.")
+
+        # Load the MetallicSmoothness image
+        metallic_smoothness_path = os.path.join(textures_dir, f"{obj_name}_MetallicSmoothness.png")
+        if not os.path.exists(metallic_smoothness_path):
+            print(f"  MetallicSmoothness texture missing for {obj_name} at {metallic_smoothness_path}. Skipping linking.")
+            continue
+
+        metallic_smoothness_img = bpy.data.images.load(metallic_smoothness_path)
+        metallic_smoothness_img.colorspace_settings.name = 'Non-Color' 
+        
+        metallic_smoothness_node_name = f"{obj_name}_MetallicSmoothness_map" # Descriptive name
+        metallic_smoothness_node = nodes.get(metallic_smoothness_node_name)
+        if not metallic_smoothness_node:
+            metallic_smoothness_node = nodes.new('ShaderNodeTexImage')
+            metallic_smoothness_node.name = metallic_smoothness_node_name
+            metallic_smoothness_node.image = metallic_smoothness_img
+            metallic_smoothness_node.location = (-800, -500)
+            metallic_smoothness_node.interpolation = 'Linear'
+            print(f"  Created new MetallicSmoothness node '{metallic_smoothness_node_name}' for '{obj.name}'.")
+        else:
+            metallic_smoothness_node.image = metallic_smoothness_img # Ensure it points to the correct image
+            print(f"  MetallicSmoothness node '{metallic_smoothness_node_name}' already exists for '{obj.name}'.")
+        
+        nodes_created_by_unity_export_setup.append(metallic_smoothness_node.name) # Track this node
+
+        # Link Color output (R channel for Metalness) to Principled BSDF Metallic input
+        if 'Metallic' in principled_bsdf.inputs:
+            for link in principled_bsdf.inputs['Metallic'].links: links.remove(link)
+            links.new(metallic_smoothness_node.outputs['Color'], principled_bsdf.inputs['Metallic'])    
+            print(f"  Linked Metallic (R channel from MetallicSmoothness) map to Principled BSDF 'Metallic' for '{obj.name}'.")
+        else:
+            print(f"  Warning: Principled BSDF has no 'Metallic' input for '{obj.name}'.")
+
+        # Link Alpha output (Smoothness) to Principled BSDF Roughness input (inverted to Roughness)
+        if 'Roughness' in principled_bsdf.inputs:
+            for link in principled_bsdf.inputs['Roughness'].links: links.remove(link)
+            invert_node = nodes.new('ShaderNodeInvert') # This is a new node, needs to be tracked
+            invert_node.location = metallic_smoothness_node.location + mathutils.Vector((200, -100))
+            nodes_created_by_unity_export_setup.append(invert_node.name) # Track this node
+            
+            links.new(metallic_smoothness_node.outputs['Alpha'], invert_node.inputs['Color'])
+            links.new(invert_node.outputs['Color'], principled_bsdf.inputs['Roughness'])
+            print(f"  Linked Smoothness (A from MetallicSmoothness, then inverted to Roughness) map to Principled BSDF 'Roughness' for '{obj.name}'.")
+        else:
+            print(f"  Warning: Principled BSDF has no 'Roughness' input for '{obj.name}'.")
+            
+    bpy.context.view_layer.update()
+    return nodes_created_by_unity_export_setup # Return new nodes for cleanup
+
+def OLD_update_shader_nodes_for_unity_export(imported_meshes, textures_dir):
+    """
+    Updates material nodes to use the combined MetallicSmoothness texture for Unity export consistency.
+    This function should be called AFTER create_metallic_smoothness_map.
+    """
+    print("\n--- Phase: Updating Shader Nodes for Unity (Metallic/Smoothness) ---")
+    for obj in imported_meshes:
+        obj_name = obj.name
+        if not obj or not obj.data.materials:
+            print(f"Object '{obj_name}' not found or has no materials. Skipping shader update.")
+            continue
+            
+        mat = obj.data.materials[0] # Assumes material is at index 0
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+
+        mat.use_nodes = True # Ensure nodes are enabled
+        principled_bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if not principled_bsdf:
+            print(f"  Principled BSDF node not found in material of '{obj.name}'. Cannot link MetallicSmoothness.")
+            continue
+
+        # Remove old Roughness and Metallic links if present
+        # Remove old Roughness and Metallic links if present
+        if 'Roughness' in principled_bsdf.inputs:
+            for link in principled_bsdf.inputs['Roughness'].links:
+                links.remove(link)
+            print(f"  Removed old Roughness link for '{obj.name}'.")
+        if 'Metallic' in principled_bsdf.inputs:
+            for link in principled_bsdf.inputs['Metallic'].links:
+                links.remove(link)
+            print(f"  Removed old Metallic link for '{obj.name}'.")
+
+        # Remove the old roughness and metallic image nodes if present
+        roughness_node_name = f"{obj_name}_roughness"
+        metallic_old_node_name = f"{obj_name}_metallic" # My previous metallic node name
+        
+        if roughness_node_name in nodes:
+            nodes.remove(nodes[roughness_node_name])
+            print(f"  Removed old roughness node '{roughness_node_name}' for '{obj.name}'.")
+        if metallic_old_node_name in nodes:
+            nodes.remove(nodes[metallic_old_node_name])
+            print(f"  Removed old metallic node '{metallic_old_node_name}' for '{obj.name}'.")
+
+
+        # Load the MetallicSmoothness image
+        metallic_smoothness_path = os.path.join(textures_dir, f"{obj_name}_MetallicSmoothness.png")
+        if not os.path.exists(metallic_smoothness_path):
+            print(f"  MetallicSmoothness texture missing for {obj_name} at {metallic_smoothness_path}. Skipping linking.")
+            continue
+
+        metallic_smoothness_img = bpy.data.images.load(metallic_smoothness_path)
+        metallic_smoothness_img.colorspace_settings.name = 'Non-Color' # Important for data
+        
+        metallic_smoothness_node_name = f"{obj_name}_MetallicSmoothness_map" # Descriptive name
+        metallic_smoothness_node = nodes.get(metallic_smoothness_node_name)
+        if not metallic_smoothness_node:
+            metallic_smoothness_node = nodes.new('ShaderNodeTexImage')
+            metallic_smoothness_node.name = metallic_smoothness_node_name
+            metallic_smoothness_node.image = metallic_smoothness_img
+            metallic_smoothness_node.location = (-800, -500) # Move to a sensible position
+            metallic_smoothness_node.interpolation = 'Linear'
+            print(f"  Created new MetallicSmoothness node '{metallic_smoothness_node_name}' for '{obj.name}'.")
+        else:
+            metallic_smoothness_node.image = metallic_smoothness_img # Ensure it points to the correct image
+            print(f"  MetallicSmoothness node '{metallic_smoothness_node_name}' already exists for '{obj.name}'.")
+
+        # Link Color output (R channel for Metalness) to Principled BSDF Metallic input
+        if 'Metallic' in principled_bsdf.inputs:
+            # Clear existing links to Metallic before creating new one
+            for link in principled_bsdf.inputs['Metallic'].links: links.remove(link)
+            links.new(metallic_smoothness_node.outputs['Color'], principled_bsdf.inputs['Metallic']) 
+            print(f"  Linked Metallic (R channel from MetallicSmoothness) map to Principled BSDF 'Metallic' for '{obj.name}'.")
+        else:
+            print(f"  Warning: Principled BSDF has no 'Metallic' input for '{obj.name}'.")
+
+        # Link Alpha output (Smoothness) to Principled BSDF Roughness input (no inversion needed, as it's already smoothness)
+        if 'Roughness' in principled_bsdf.inputs:
+            # Note: Blender's Principled BSDF expects Roughness. If MetallicSmoothness has Smoothness in Alpha,
+            # we need to INVERT it to get Roughness (Roughness = 1 - Smoothness).
+            # Clear existing links to Roughness before creating new one
+            for link in principled_bsdf.inputs['Roughness'].links: links.remove(link)
+            invert_node = nodes.new('ShaderNodeInvert')
+            invert_node.location = metallic_smoothness_node.location + mathutils.Vector((200, -100))
+            links.new(metallic_smoothness_node.outputs['Alpha'], invert_node.inputs['Color'])
+            links.new(invert_node.outputs['Color'], principled_bsdf.inputs['Roughness'])
+            print(f"  Linked Smoothness (A from MetallicSmoothness, then inverted to Roughness) map to Principled BSDF 'Roughness' for '{obj.name}'.")
+        else:
+            print(f"  Warning: Principled BSDF has no 'Roughness' input for '{obj.name}'.")
+        
+    bpy.context.view_layer.update()

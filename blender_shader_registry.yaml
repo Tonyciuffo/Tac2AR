@@ -1,0 +1,145 @@
+# blender_asset_registry.yaml
+# Questo file serve come registro centrale per tutti gli shader di Blender
+# Mappa un shader_ref simbolico al suo file .blend fisico, al nome del materiale/gruppo di nodi all'interno
+# di quel file .blend e al suo colore predefinito.
+
+shader_ref:
+  bone_shader:
+    blend_file: "bone.blend"
+    blend_material: "bone_mat"
+    default_color: "#E7D5B6" # Colore predefinito per l'osso
+
+  brain_shader: # per test su match diretto
+    blend_file: "brain.blend" 
+    blend_material: "brain_mat"
+    default_color: "#A0A0A0" # Grigio medio per il cervello
+
+  cartilage_shader:
+    blend_file: "cartilage.blend"
+    blend_material: "cartilage_mat"
+    default_color: "#CCCCCC" # Grigio chiaro per la cartilagine
+
+  cyst_shader:
+    blend_file: "cyst.blend"
+    blend_material: "cyst_mat"
+    default_color: "#ADD8E6" # Azzurro chiaro per le cisti
+
+  cyst_2_shader:
+    blend_file: "cyst_2.blend"
+    blend_material: "cyst_2_mat"
+    default_color: "#ADD8E6" # Azzurro chiaro per le cisti (sim. alla prima)
+
+  default_shader:
+    blend_file: "default.blend" # ultimo fallback (altrimenti non rendera)
+    blend_material: "default_mat"
+    default_color: "#808080" # Grigio neutro (fallback)
+
+  fat_tissue_shader:
+    blend_file: "fat_tissue.blend"
+    blend_material: "fat_tissue_mat"
+    default_color: "#E7DDA6" # Giallo chiaro per il tessuto adiposo
+
+  gallbladder_shader:
+    blend_file: "gallbladder.blend"
+    blend_material: "gallbladder_mat"
+    default_color: "#80A040" # Verdastro-marrone per la cistifellea
+
+  guts_shader:
+    blend_file: "guts.blend"
+    blend_material: "guts_mat"
+    default_color: "#A0522D" # Marrone per gli intestini (organi digestivi)
+
+  lungs_shader:
+    blend_file: "lungs.blend"
+    blend_material: "lungs_mat"
+    default_color: "#C08080" # Rosa-marrone chiaro per i polmoni
+
+  lymph_node_shader:
+    blend_file: "lymph_node.blend"
+    blend_material: "lymph_node_mat"
+    default_color: "#90EE90" # Verde chiaro per i linfonodi
+
+  muscle_shader:
+    blend_file: "muscle.blend"
+    blend_material: "muscle_mat"
+    default_color: "#C04040" # Rosso-marrone per i muscoli
+
+  nerve_shader:
+    blend_file: "nerve.blend"
+    blend_material: "nerve_mat"
+    default_color: "#FFD700" # Giallo oro per i nervi
+
+  soft_organ_shader: # Corrisponde a una biological_category come "soft_organ" o "parenchima"
+    blend_file: "organ.blend"
+    blend_material: "organ_mat"
+    default_color: "#C0C0C0" # Grigio per organi soffici (parenchima)
+
+  hard_organ_shader: # Corrisponde a una biological_category come "hard_organ"
+    blend_file: "organ_2.blend"
+    blend_material: "organ_2_mat"
+    default_color: "#FF9999" # Rosa chiaro per organi duri (materiale bagnato)
+
+  skin_shader:
+    blend_file: "skin.blend"
+    blend_material: "skin_mat"
+    default_color: "#F0C0A0" # Tonalità pelle chiara
+
+  spleen_shader:
+    blend_file: "spleen.blend"
+    blend_material: "spleen_mat"
+    default_color: "#B03060" # Rosso-violaceo per la milza
+
+  artery_shader: # esempio di variante di colore
+    blend_file: "tubes.blend" # File contenente i materiali per vene e arterie
+    blend_material: "ArterialVesselMaterial" # Nome del materiale arterioso in tubes.blend
+    default_color: "#FF0000" # Rosso tipico per le arterie
+
+  vein_shader: # esempio di variante di colore
+    blend_file: "tubes.blend" # File contenente i materiali per vene e arterie
+    blend_material: "VenousVesselMaterial" # Nome del materiale venoso in tubes.blend
+    default_color: "#0000FF" # Blu tipico per le vene
+
+  tube_stripes_shader:
+    blend_file: "tube_stripes.blend" # trachea e cartilagini "striate"
+    blend_material: "tube_stripes_mat"
+    default_color: "#E0E0E0" # Bianco sporco per cartilagini striate
+
+  tumor_1_shader:
+    blend_file: "tumor_1.blend" # rosa
+    blend_material: "tumor_1_mat"
+    default_color: "#FF69B4" # Rosa acceso per tumore 1
+
+  tumor_2_shader:
+    blend_file: "tumor_2.blend" # marrone
+    blend_material: "tumor_2_mat"
+    default_color: "#8B4513" # Marrone sella per tumore 2
+
+biological_categories:
+  # Mappa le categorie biologiche a un shader_ref simbolico predefinito.
+  # Questo fornisce un fallback per i segmenti che appartengono a quella categoria.
+  #
+  # Casi specifici: (puntano direttamente allo shader)
+  Brain: "brain_shader"
+  Lung: "lungs_shader"
+  Spleen: "spleen_shader"
+  Gallbladder: gallbladder_shader
+  
+  # biological_categories:
+  Organ: "hard_organ_shader" # Default per organi generici lisci - lucidi
+  Parenchima: "soft_organ_shader" #Default per organi spgunosi - rugosi
+  Bone: "bone_shader"
+  Artery: "artery_shader"
+  Vein: "vein_shader"
+  Cartilage: "cartilage_shader"
+  Muscle: "muscle_shader"
+  Nerve: "nerve_shader"
+  Fat: "fat_tissue_shader" # snomed category
+  Skin: "skin_shader"
+  Digestive: "guts_shader" # anche per organi digestivi generici
+  LymphNode: "lymph_node_shader"
+  Cyst: "cyst_shader"
+  Tumor1: "tumor_1_shader" # Default per i tumori, se non specificato altrimenti
+  Tumor2: "tumor_2_shader"
+
+  # ultimo fallback
+  Other: "default_shader" # Fallback per categorie non mappate esplicitamente

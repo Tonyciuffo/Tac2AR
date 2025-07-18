@@ -1,0 +1,285 @@
+individual_mesh_export:
+  spleen:
+    display_name: "Spleen"
+    export: True
+    biological_category: "Organ"
+
+  kidney_right:
+    display_name: "Right Kidney"
+    export: True
+    biological_category: "Organ"
+
+  kidney_left:
+    display_name: "Left Kidney"
+    export: True
+    biological_category: "Organ"
+
+  gallbladder:
+    display_name: "Gallbladder"
+    export: True
+    biological_category: "Organ"
+
+  liver:
+    display_name: "Liver"
+    export: True
+    biological_category: "Organ"
+
+  stomach:
+    display_name: "Stomach"
+    export: True
+    biological_category: "Organ"
+
+  pancreas:
+    display_name: "Pancreas"
+    export: True
+    biological_category: "Organ"
+
+  adrenal_gland_right:
+    display_name: "Right Adrenal Gland"
+    export: True
+    biological_category: "Organ"
+
+  adrenal_gland_left:
+    display_name: "Left Adrenal Gland"
+    export: True
+    biological_category: "Organ"
+
+  lung_left:
+    display_name: "Left Lung"
+    export: True
+    biological_category: "Organ"
+
+  lung_right:
+    display_name: "Right Lung"
+    export: True
+    biological_category: "Organ"
+
+  esophagus:
+    display_name: "Esophagus"
+    export: True
+    biological_category: "Organ"
+
+  small_bowel:
+    display_name: "Small Bowel"
+    export: True
+    biological_category: "Organ"
+
+  duodenum:
+    display_name: "Duodenum"
+    export: True
+    biological_category: "Organ"
+
+  colon:
+    display_name: "Colon"
+    export: True
+    biological_category: "Organ"
+
+  urinary_bladder:
+    display_name: "Urinary Bladder"
+    export: True
+    biological_category: "Organ"
+
+  prostate:
+    display_name: "Prostate"
+    export: True
+    biological_category: "Organ"
+
+  sacrum:
+    display_name: "Sacrum"
+    export: True
+    biological_category: "Bone"
+
+  vertebrae:
+    display_name: "Vertebrae"
+    export: True
+    biological_category: "Bone"
+
+  intervertebral_discs:
+    display_name: "Intervertebral Discs"
+    export: True
+    biological_category: "Cartilage"
+
+  spinal_cord:
+    display_name: "Spinal Cord"
+    export: True
+    biological_category:
+
+  heart:
+    display_name: "Heart"
+    export: True
+    biological_category: "Organ"
+
+  aorta:
+    display_name: "Aorta"
+    export: False
+    biological_category: "Vessel"
+
+  inferior_vena_cava:
+    display_name: "Inferior Vena Cava"
+    export: False
+    biological_category: "Vessel"
+
+  portal_vein_and_splenic_vein:
+    display_name: "Portal and Splenic Vein"
+    export: False
+    biological_category: "Vessel"
+
+  iliac_artery_left:
+    display_name: "Left Iliac Artery"
+    export: False
+    biological_category: "Vessel"
+
+  iliac_artery_right:
+    display_name: "Right Iliac Artery"
+    export: False
+    biological_category: "Vessel"
+
+  iliac_vena_left:
+    display_name: "Left Iliac Vena"
+    export: False
+    biological_category: "Vessel"
+
+  iliac_vena_right:
+    display_name: "Right Iliac Vena"
+    export: False
+    biological_category: "Vessel"
+
+  humerus_left:
+    display_name: "Left Humerus"
+    export: False
+    biological_category: "Bone"
+
+  humerus_right:
+    display_name: "Right Humerus"
+    export: False
+    biological_category: "Bone"
+
+  scapula_left:
+    display_name: "Left Scapula"
+    export: False
+    biological_category: "Bone"
+
+  scapula_right:
+    display_name: "Right Scapula"
+    export: False
+    biological_category: "Bone"
+
+  clavicula_left:
+    display_name: "Left Clavicula"
+    export: False
+    biological_category: "Bone"
+
+  clavicula_right:
+    display_name: "Right Clavicula"
+    export: False
+    biological_category: "Bone"
+
+  femur_left:
+    display_name: "Left Femur"
+    export: False
+    biological_category: "Bone"
+
+  femur_right:
+    display_name: "Right Femur"
+    export: False
+    biological_category: "Bone"
+
+  hip_left:
+    display_name: "Left Hip"
+    export: True
+    biological_category: "Bone"
+
+  hip_right:
+    display_name: "Right Hip"
+    export: True
+    biological_category: "Bone"
+
+  gluteus_maximus_left:
+    display_name: "Left Gluteus Maximus"
+    export: False
+    biological_category: "Muscle"
+
+  gluteus_maximus_right:
+    display_name: "Right Gluteus Maximus"
+    export: False
+    biological_category: "Muscle"
+
+  gluteus_medius_left:
+    display_name: "Left Gluteus Medius"
+    export: False
+    biological_category: "Muscle"
+
+  gluteus_medius_right:
+    display_name: "Right Gluteus Medius"
+    export: False
+    biological_category: "Muscle"
+
+  gluteus_minimus_left:
+    display_name: "Left Gluteus Minimus"
+    export: False
+    biological_category: "Muscle"
+
+  gluteus_minimus_right:
+    display_name: "Right Gluteus Minimus"
+    export: False
+    biological_category: "Muscle"
+
+  autochthon_left:
+    display_name: "Left Autochthon"
+    export: False
+    biological_category: "Muscle"
+
+  autochthon_right:
+    display_name: "Right Autochthon"
+    export: False
+    biological_category: "Muscle"
+
+  iliopsoas_left:
+    display_name: "Left Iliopsoas"
+    export: False
+    biological_category: "Muscle"
+
+  iliopsoas_right:
+    display_name: "Right Iliopsoas"
+    export: False
+    biological_category: "Muscle"
+
+  brain:
+    display_name: "Brain"
+    export: True
+    biological_category: "Brain"
+
+combined_mesh_export:
+  combined_mesh_exports_bones: {display_name: "All Bones", biological_category: "Bone", export: True}
+  combined_mesh_exports_fats: {display_name: "Fats", biological_category: "Fat", export: True}
+  combined_mesh_exports_skins: {display_name: "Skin", biological_category: "Skin", export: True}
+  combined_mesh_exports_muscles: {display_name: "Muscles", biological_category: "Muscle", export: True}
+  combined_mesh_exports_vessels: {display_name: "Vessels", biological_category: ["Artery", "Vein"], export: False}
+  combined_mesh_exports_lymph_nodes: {display_name: "Lymph Nodes", biological_category: "LymphNode", export: True}
+  combined_mesh_exports_digestive: {display_name: "Digestive Organs", biological_category: Digestive, export: True}
+biological_categories: # QUI E' SOLO PER REF
+  # Mappa le categorie biologiche a un shader_ref simbolico predefinito.
+  # Questo fornisce un fallback per i segmenti che appartengono a quella categoria.
+  #
+  # Casi specifici
+  Brain: "brain_shader"
+  Lungs: "lungs_shader"
+  Spleen: "spleen_shader"
+  Digestive: "guts_shader" # anche per organi digestivi generici
+  # Casi generici
+  Organ: "hard_organ_shader" # Default per organi generici lisci - lucidi
+  Parenchima: "soft_organ_shader" #Default per organi spgunosi - rugosi
+  Bone: "bone_shader"
+  Artery: "artery_shader"
+  Vein: "vein_shader"
+  Cartilage: "cartilage_shader"
+  Muscle: "muscle_shader"
+  Nerve: "nerve_shader"
+  Fat: "fat_tissue_shader" # snomed category
+  Skin: "skin_shader"
+  LymphNode: "lymph_node_shader"
+  Cyst: "cyst_shader"
+  Tumor: "tumor_1_shader" # Default per i tumori, se non specificato altrimenti
+
+  # ultimo fallback
+  Other: "default_shader" # Fallback per categorie non mappate esplicitamente
