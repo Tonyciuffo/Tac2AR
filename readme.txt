@@ -43,9 +43,20 @@ Linux: https://download.blender.org/release/Blender4.2/blender-4.2.9-linux-x64.t
 MacOs (x64 - Intel): https://download.blender.org/release/Blender4.2/blender-4.2.9-macos-x64.dmg
 MacOs (arm64 -AMD): https://download.blender.org/release/Blender4.2/blender-4.2.9-macos-arm64.dmg
 
-7) Modifica i percorsi in config.py a seconda delle necessità
+7) Metti uno stack di DICOM nella directory Input
+Ricorda di preparare una cartella per il cliente ed una sottocartella per la sessione
+(es. Ospedale_A\Caso_N\scan.nii)
+(es. Ospedale_A\Caso_N\DICOM\Images*.dcm)
 
-8) Metti uno stack di DICOM nella directory Input ed esegui con:
+8) In config.py, nelle impostazioni generali del progetto, imposta cliente e sessione con le directory di Input in modo che coincidano
+Es.
+# ID del cliente corrente. Usato per la strutturazione delle directory e i nomi dei file.
+CLIENT_ID = "Ospedale_A"
+
+# ID della sessione del progetto corrente (es. ID scansione paziente). Usato per la strutturazione delle directory e i nomi dei file.
+PROJECT_SESSION_ID = "Caso_N"
+
+8) Esegui con:
 python Main.py
 
 
