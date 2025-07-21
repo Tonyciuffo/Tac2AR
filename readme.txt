@@ -38,10 +38,10 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 
 6) Scarica Blender 4.2 LTS ed estrai/copia la cartella estratta nella directory base del progetto con il nome "Blender":
 
-Windows: https://download.blender.org/release/Blender4.2/blender-4.2.9-windows-x64.zip
-Linux: https://download.blender.org/release/Blender4.2/blender-4.2.9-linux-x64.tar.xz
-MacOs (x64 - Intel): https://download.blender.org/release/Blender4.2/blender-4.2.9-macos-x64.dmg
-MacOs (arm64 -AMD): https://download.blender.org/release/Blender4.2/blender-4.2.9-macos-arm64.dmg
+Windows: https://download.blender.org/release/Blender4.5/blender-4.5.0-windows-x64.zip
+Linux: https://download.blender.org/release/Blender4.5/blender-4.5.0-linux-x64.tar.xz
+MacOs (x64 - Intel): https://download.blender.org/release/Blender4.5/blender-4.5.0-macos-x64.dmg
+MacOs (arm64 -AMD): https://download.blender.org/release/Blender4.5/blender-4.5.0-macos-arm64.dmg
 
 7) Metti uno stack di DICOM nella directory Input
 Ricorda di preparare una cartella per il cliente ed una sottocartella per la sessione
@@ -69,6 +69,15 @@ python execute_blender_pipeline-py // da testare bene
 - Una direcotry Textures con tutte le texture nei due standard (la metalness nel formato URP viene chiamata "_MetallicSmoothness")
 - 2 scene blender a monte e a valle del bake (uno con history ed uno per debug)
 - 2 manifest in formato json con l'associazione segmenti-materiali prima e dopo l'interrogazione del database snomed (al momento viene interrogato il csv fornito con totalsegmentator)
+
+BUG NOTI:
+L'esecusione della Blender Pipeline si interrompe con:
+ERRORE CRITICO: Impossibile importare un modulo fondamentale. Controlla che le librerie necessarie (es. PyYAML) siano installate nell'ambiente Python di Blender.
+Dettagli: No module named 'bpy'
+
+E' un problema di esecuzione dell'ambiente. Per il momento si patcha installando pyYaml anche dentro a Blender
+Dalla directory root:
+.\Blender\4.5\python\bin\python.exe -m pip install pyYaml
 
 
 ACKNOWLEDGMENTS / RINGRAZIAMENIT:
