@@ -1,124 +1,252 @@
-guide_title: "Guida Operativa alla Pipeline Tac2Ar"
-version: "3.0 - Architettura basata su Manifest"
+# HowTo Guide: Tac2AR Pipeline
 
-# -------------------------------------------
-# 1. Panoramica e Architettura
-# -------------------------------------------
-introduzione: >
-  Questa guida descrive l'architettura e l'uso della pipeline Tac2Ar. Il sistema è
-  progettato per convertire immagini mediche (DICOM/NIfTI) in modelli 3D ottimizzati
-  e texturizzati, pronti per applicazioni AR/VR e di rendering.
+# ===================================================================
+# 1. PANORAMICA E WORKFLOW
+# ===================================================================
+panoramica:
+  descrizione: "La pipeline Tac2AR automatizza la conversione di dati di imaging medico in asset 3D pronti per l'uso, ottimizzati per motori real-time come Unity. Il processo è diviso in due macro-fasi orchestrate da `main.py`."
+  workflow:
+    - fase: 1
+      nome: "Segmentazione e Generazione Mesh"
+      script_principale: "segmentator_pipeline.py"
+      operazioni:
+        - "Input: Scansione DICOM o file NIfTI."
+        - "Tool: `TotalSegmentator` viene eseguito per creare un file NIfTI multi-etichetta."
+        - "Logica: Le regole in `segmentMappings.yaml` vengono applicate per decidere quali segmenti esportare e come raggrupparli."
+        - "Output: Mesh intermedie in formato `.stl` e un file `segments_data_manifest.json`."
 
-architettura_chiave: >
-  Il cuore della pipeline è un file **manifesto** (`segments_data_manifest.json`),
-  che agisce come un "oggetto di trasferimento dati" tra le due fasi principali del processo.
-  Questo approccio garantisce un disaccoppiamento totale tra la logica di segmentazione
-  e quella di elaborazione 3D.
+    - fase: 2
+      nome: "Processamento 3D e Texturing"
+      script_principale: "blender_pipeline.py (eseguito all'interno di Blender)"
+      operazioni:
+        - "Input: Mesh `.stl` e `segments_data_manifest.json` dalla fase precedente."
+        - "Logica: Il manifest viene arricchito con le informazioni sui materiali da `blender_shader_registry.yaml`."
+        - "Tool: Blender viene usato per pulire, ottimizzare, creare UV, applicare materiali e fare il bake delle texture."
+        - "Output: Modelli finali in formato `.glb` (PBR) e `.fbx` (Unity URP), completi di texture."
 
-  - **Fase 1: Segmentazione (`segmentator_pipeline.py`)**:
-    Analizza le immagini mediche, esegue la segmentazione con TotalSegmentator,
-    e produce due output cruciali: i modelli 3D grezzi (.stl) e il file `segments_data_manifest.json`
-    che li descrive (es. a quale categoria biologica appartengono).
+# ===================================================================
+# 2. INSTALLAZIONE E SETUP
+# ===================================================================
+installazione:
+  descrizione: "Seguire questi passaggi per configurare l'ambiente di sviluppo."
+  prerequisiti:
+    - "Python 3.10 o superiore."
+    - "Git."
+    - "Scheda grafica NVIDIA (consigliata per l'accelerazione GPU)."
+  passaggi:
+    - step: 1
+      action: "Clonare il Repository"
+      command: "git clone https://github.com/Tonyciuffo/Tac2AR.git"
+    - step: 2
+      action: "Creare e Attivare l'Ambiente Virtuale"
+      details: "Sostituire i comandi a seconda del proprio OS."
+      code: |
+        # Windows
+        python -m venv venv
+        venv\Scripts\activate
+        # Linux / macOS
+        python3 -m venv venv
+        source venv/bin/activate
+    - step: 3
+      action: "Installare le Dipendenze Python"
+      command: "pip install -r requirements.txt"
+    - step: 4
+      action: "Installare PyTorch con Supporto GPU (Opzionale)"
+      details: "Scegliere il comando in base alla propria scheda video."
+      code: |
+        # Per NVIDIA RTX serie 30/40 (CUDA 11.8)
+        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+        # Per NVIDIA RTX serie 50+ (CUDA 12.1)
+        pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    - step: 5
+      action: "Setup di Blender"
+      details: "La pipeline richiede Blender 4.2 LTS. Se non è già presente nella root del progetto, scaricarlo, estrarlo e rinominare la cartella in 'Blender'."
 
-  - **Fase 2: Elaborazione 3D (`blender_pipeline.py`)**:
-    Legge il manifest e i file .stl. Arricchisce il manifest con le informazioni sui
-    materiali di Blender, e poi usa queste informazioni per processare, texturizzare
-    ed esportare il modello 3D finale.
+# ===================================================================
+# 3. STRUTTURA DIRECTORY E CONVENZIONI
+# ===================================================================
+struttura_e_convenzioni:
+  struttura_directory:
+    descrizione: "La pipeline si basa su una struttura di cartelle rigorosa, definita in `config.py`."
+    albero: |
+      Tac2Ar/
+      ├── pipeline.log              # File di log principale con l'output di tutta la pipeline.
+      ├── Blender/                  # Versione portable di Blender.
+      ├── Input/
+      │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/   # Dati grezzi (DICOM/NIfTI).
+      ├── Output/
+      │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/
+      │       ├── segments_data_manifest.json
+      │       ├── {PROJECT_SESSION_ID}_processed.glb
+      │       └── Textures/
+      ├── Shaders/                  # File .blend con i materiali.
+      ├── Tmp/
+      │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/
+      │       └── mesh_intermediate/  # Contiene i file .stl grezzi.
+      ├── main.py
+      ├── config.py
+      ├── segmentMappings.yaml
+      └── blender_shader_registry.yaml
 
-interfaccia_utente: >
-  L'utente configura il processo tramite due file YAML principali:
-  - `segmentMappings.yaml`: Definisce quali segmenti esportare, come raggrupparli,
-    e a quale `biological_category` appartengono.
-  - `blender_shader_registry.yaml`: Mappa le `biological_category` ai materiali
-    procedurali di Blender.
+  convenzioni_di_denominazione:
+    descrizione: "Seguire queste convenzioni è obbligatorio per il corretto funzionamento."
+    regole:
+      - categoria: "File di Output"
+        items:
+          - "Modelli 3D": "`{PROJECT_SESSION_ID}_processed.glb` / `.fbx`"
+          - "Mesh Intermedie": "`{nome_segmento}.stl`"
+          - "Texture": "`{nome_mesh}_{tipo_canale}.png`"
+      - categoria: "Nuovo Materiale (Scalabilità)"
+        items:
+          - "Azione": "Creare un nuovo file `.blend` nella cartella `Shaders/`."
+          - "Contenuto": "Il file deve contenere una scena con un oggetto a cui è applicato il nuovo materiale procedurale."
+          - "Nome Materiale": "Il materiale in Blender DEVE essere nominato `{nome_file}_mat`. Esempio: per `skin.blend`, il materiale deve chiamarsi `skin_mat`."
+          - "Registrazione": "Il nuovo materiale deve essere registrato in `blender_shader_registry.yaml`."
 
-# -------------------------------------------
-# 2. Struttura delle Directory e File Chiave
-# -------------------------------------------
-struttura_directory:
-  descrizione: "La pipeline si basa su una struttura di cartelle rigorosa, definita in `config.py`."
-  albero: |
-    Tac2Ar_TotalSegmentator/
-    ├── Blender/                  # Versione portable di Blender.
-    ├── Input/
-    │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/   # Dati grezzi (DICOM/NIfTI).
-    ├── Output/
-    │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/
-    │       ├── segments_data_manifest.json  # MANIFEST INIZIALE (da segmentator)
-    │       ├── enriched_manifest.json       # MANIFEST ARRICCHITO (da blender, per debug)
-    │       ├── {PROJECT_SESSION_ID}_processed.glb  # OUTPUT FINALE
-    │       └── Textures/
-    ├── Shaders/                  # File .blend con i materiali.
-    ├── Tmp/
-    │   └── {CLIENT_ID}/{PROJECT_SESSION_ID}/
-    │       └── mesh_intermediate/  # Contiene i file .stl grezzi.
-    ├── main.py                   # Orchestratore principale.
-    ├── segmentator_pipeline.py   # Logica Fase 1.
-    ├── blender_pipeline.py       # Logica Fase 2.
-    ├── config.py                 # Configurazione centrale.
-    ├── segmentMappings.yaml      # Interfaccia Utente: regole di segmentazione.
-    └── blender_shader_registry.yaml # Interfaccia Utente: regole dei materiali.
+# ===================================================================
+# 4. CONFIGURAZIONE
+# ===================================================================
+configurazione:
+  - file: "config.py"
+    descrizione: "File di configurazione principale per definire percorsi e parametri di alto livello."
+    parametri_chiave:
+      - "CLIENT_ID": "ID del cliente, corrisponde al nome della cartella in `Input/`."
+      - "PROJECT_SESSION_ID": "ID della sessione, corrisponde alla sottocartella."
+      - "TOTAL_SEGMENTATOR_TASKS": "Task per TotalSegmentator (es. `['total_mr']`)."
+      - "MAX_FACES_PER_MESH": "Limite di poligoni per l'ottimizzazione."
+      - "TEXTURE_SIZE": "Risoluzione delle texture (es. 512, 1024)."
 
-# -------------------------------------------
-# 3. Flusso di Esecuzione Dettagliato
-# -------------------------------------------
-esecuzione:
-  descrizione: "Per avviare l'intero processo, eseguire `main.py` da un ambiente Python con le dipendenze di `requirements.txt` installate."
-  comando: "python main.py"
+  - file: "segmentMappings.yaml"
+    descrizione: "File di interfaccia utente per definire le regole di esportazione dei segmenti."
+    struttura:
+      - "individual_mesh_export": "Definisce il comportamento per ogni singolo segmento. Assegna la `biological_category`."
+      - "combined_mesh_export": "Definisce gruppi di mesh basati sulla `biological_category`."
 
-flusso_dettagliato:
-  # --- FASE 1: SEGMENTAZIONE ---
-  - fase: "FASE 1: Pipeline di Segmentazione"
-    script: "`segmentator_pipeline.py`"
-    steps:
-      - id: "s01"
-        titolo: "Setup e Analisi Input"
-        descrizione: "Identifica i file di input (DICOM/NIfTI), esegue la segmentazione con TotalSegmentator e costruisce la struttura dati iniziale `all_segment_data` per i segmenti trovati."
-        riferimento: "`segmentator_ops.fetch_input_files`, `segmentator_ops.run_total_segmentator`"
+  - file: "blender_shader_registry.yaml"
+    descrizione: "Catalogo dei materiali. Associa le categorie biologiche agli shader di Blender."
+    struttura:
+      - "shader_ref": "Elenco di tutti i materiali, con riferimento al file `.blend` e al nome del materiale interno."
+      - "biological_categories": "Mappa una `biological_category` (da `segmentMappings.yaml`) a uno `shader_ref`."
 
-      - id: "s02"
-        titolo: "Arricchimento Dati"
-        descrizione: "Popola `all_segment_data` con dettagli da varie fonti: ID da TotalSegmentator, dati anatomici da un file SNOMED, e la `biological_category` leggendo le regole definite dall'utente in `segmentMappings.yaml`."
-        riferimento: "`segmentator_ops.populate_snomed_details_for_segments`"
+# ===================================================================
+# 5. WORKFLOW DETTAGLIATO: ASSOCIAZIONE SEGMENTO-MATERIALE
+# ===================================================================
+associazione_segmento_materiale:
+  descrizione: "Questo è il flusso dati che collega un segmento anatomico al suo materiale finale. Il dizionario `all_segment_data` agisce da veicolo per queste informazioni."
+  fasi:
+    - fase: 1
+      script: "segmentator_pipeline.py"
+      obiettivo: "Costruire e arricchire il manifest dei segmenti."
+      passaggi:
+        - "1. Creazione": "Viene creato il dizionario `all_segment_data` con una voce per ogni segmento identificato da TotalSegmentator (es. 'spleen', 'vertebrae_L5')."
+        - "2. Arricchimento SNOMED (Logica di Normalizzazione)": |
+            Il nome del segmento grezzo (es. `vertebrae_L5`) spesso non corrisponde direttamente a una voce nel database SNOMED.
+            Per risolvere questo, viene applicata una logica di ricerca intelligente:
+            a. **Generazione Candidati:** La funzione `utils.generate_snomed_candidate_names` crea una lista di possibili nomi da cercare, applicando regole di normalizzazione (es. da `vertebrae_L5` a `vertebra_L5`, `vertebrae`, `vertebra`).
+            b. **Lookup Iterativo:** Il sistema itera su questi candidati e cerca il primo che corrisponde a una voce nel database SNOMED.
+            c. **Popolamento Dati:** Una volta trovato un match, i dettagli (categoria, tipo, regione) vengono usati per popolare la sezione `snomed_details` del manifest.
+            Questo passaggio è cruciale per ottenere metadati medici accurati.
+        - "3. Arricchimento Custom (Regole Utente)": |
+            Il dizionario viene ulteriormente arricchito usando le regole di `segmentMappings.yaml`.
+            Per ogni segmento, il codice cerca una regola corrispondente e popola il sotto-dizionario `custom_parameters`.
+            L'informazione più importante aggiunta qui è la `biological_category` (es. "Organ", "Bone"), che funge da anello di congiunzione astratto con i materiali.
+        - "4. Output": "Il dizionario `all_segment_data`, ora completo, viene salvato come `segments_data_manifest.json`."
 
-      - id: "s03"
-        titolo: "Esportazione STL e Creazione Voci Manifest per Gruppi"
-        descrizione: >
-          Esporta i modelli 3D in formato `.stl` nella cartella `mesh_intermediate`.
-          - Se un segmento è parte di un gruppo (definito in `combined_mesh_exports` in `segmentMappings.yaml`), viene unito agli altri e salvato come un unico file (es. `combined_mesh_exports_bones.stl`).
-          - **Cruciale**: Viene creata una nuova voce nel dizionario `all_segment_data` per questo gruppo, ereditando la `biological_category` dalla regola.
-        riferimento: "`segmentator_ops.export_stl_from_multilabel_nii`"
+    - fase: 2
+      script: "blender_pipeline.py"
+      obiettivo: "Usare il manifest per applicare i materiali."
+      passaggi:
+        - "1. Input": "Carica `segments_data_manifest.json` e `blender_shader_registry.yaml`."
+        - "2. Logica di Fallback Materiale": "Per ogni segmento, determina lo `shader_ref` da usare con questa priorità: 1) Match diretto sul nome, 2) Match tramite `biological_category`, 3) Fallback allo shader di default."
+        - "3. Assegnazione": "Applica fisicamente il materiale corretto all'oggetto corrispondente in Blender."
 
-      - id: "s04"
-        titolo: "Scrittura del Manifest"
-        descrizione: "Salva il dizionario `all_segment_data`, ora completo di tutte le informazioni di classificazione, nel file `segments_data_manifest.json` nella cartella di output. Questo file è il 'testimone' passato alla fase successiva."
-        riferimento: "`utils.write_json`"
+# ===================================================================
+# 6. ESECUZIONE E LOGGING
+# ===================================================================
+esecuzione_e_logging:
+  - titolo: "Esecuzione Standard"
+    descrizione: "Per lanciare l'intera pipeline."
+    passaggi:
+      - "1. Configura `config.py` con `CLIENT_ID` e `PROJECT_SESSION_ID` corretti."
+      - "2. Verifica le regole in `segmentMappings.yaml`."
+      - "3. Esegui il comando `python main.py` dalla root del progetto (con l'ambiente virtuale attivo)."
+      - "4. Monitoraggio e Risultati: L'avanzamento verrà stampato a console, ma l'output completo e dettagliato, inclusi tutti gli errori, verrà salvato nel file `pipeline.log` nella directory principale. Controlla questo file per il debug. I risultati finali saranno nella cartella `Output/`."
 
-  # --- FASE 2: BLENDER ---
-  - fase: "FASE 2: Pipeline di Elaborazione 3D"
-    script: "`blender_pipeline.py`"
-    steps:
-      - id: "bp01"
-        titolo: "Lettura del Manifest e del Registro Shader"
-        descrizione: "All'avvio, Blender ignora `segmentMappings.yaml`. Legge invece il `segments_data_manifest.json` (la sua unica fonte di verità sui segmenti) e il `blender_shader_registry.yaml` (il suo catalogo di materiali)."
-        riferimento: "`utils.read_json`, `utils.read_yaml`"
+# ===================================================================
+# 7. WORKFLOW ITERATIVO E RE-BAKING
+# ===================================================================
+workflow_iterativo:
+  descrizione: "Questa sezione spiega come modificare materiali o texture e rigenerare gli output senza rieseguire l'intera pipeline da zero, sfruttando i file `.blend` intermedi."
+  file_intermedi_blend:
+    - file: "`{PROJECT_SESSION_ID}_01_procedural_materials.blend`"
+      scopo: "È il file sorgente principale per i materiali. Contiene le mesh ottimizzate con i materiali procedurali (pre-bake) ancora intatti. **Questo è il file da modificare per cambiare l'aspetto di un materiale.**"
+    - file: "`{PROJECT_SESSION_ID}_02_baked_materials.blend`"
+      scopo: "È un'istantanea della scena dopo il bake, con le texture già collegate. Utile per debug e per verificare il risultato del bake, ma non per modifiche ai materiali sorgente."
 
-      - id: "bp02"
-        titolo: "Arricchimento del Manifest"
-        descrizione: >
-          Esegue la logica di decisione dei materiali. Itera sul manifest e, per ogni segmento, applica una logica di fallback per scegliere il materiale migliore:
-          1. Cerca uno shader con il nome esatto del segmento (es. `brain_shader`).
-          2. Se non lo trova, usa la `biological_category` del segmento per trovare lo shader associato.
-          3. Se fallisce anche questo, usa lo shader di default.
-          Aggiunge le informazioni sul materiale scelto (`shader_ref`, `blend_file`, `material_name_in_blend`) direttamente nel dizionario del manifest.
-        riferimento: "`blender_ops.enrich_segment_data_with_materials`"
+  scenario_comune:
+    domanda: "Posso modificare un materiale e rieseguire solo il bake?"
+    risposta: "Sì, ma il processo è manuale. L'automazione è prevista ma non ancora implementata (`TODO -- rebake` in `main.py`)."
+    procedura_manuale:
+      - "1. Apri il file `{PROJECT_SESSION_ID}_01_procedural_materials.blend` in Blender."
+      - "2. Modifica il materiale desiderato nello Shader Editor."
+      - "3. Esegui il bake manuale tramite il pannello Render Properties di Blender."
+      - "4. Esporta manualmente il modello nel formato desiderato."
 
-      - id: "bp03"
-        titolo: "Importazione Mesh e Applicazione Materiali"
-        descrizione: "Importa tutti i file `.stl` e, usando il manifest arricchito, applica a ogni oggetto il materiale che è stato deciso nel passo precedente. La funzione è un semplice esecutore, senza logica decisionale."
-        riferimento: "`blender_ops.import_meshes_into_blender_scene`, `blender_ops.apply_materials_from_manifest`"
+# ===================================================================
+# 8. RISOLUZIONE DEI PROBLEMI COMUNI
+# ===================================================================
+troubleshooting:
+  - problema: "L'esecuzione fallisce immediatamente con `ModuleNotFoundError: No module named 'yaml'` (o `numpy`, etc.)"
+    causa: "Le librerie Python necessarie non sono installate nell'ambiente Python *interno* di Blender, che è separato dal tuo ambiente virtuale."
+    soluzione: "Devi installare le librerie usando l'eseguibile Python di Blender. Trova il percorso (es. `Blender/4.2/python/bin/python.exe`) e lancia: `percorso/a/python.exe -m pip install PyYAML numpy`."
 
-      - id: "bp04"
-        titolo: "Ottimizzazione, Baking ed Esportazione"
-        descrizione: "Procede con le fasi standard di ottimizzazione della geometria, baking delle texture sui materiali procedurali, e l'esportazione finale del modello in formato `.glb`."
-        riferimento: "Varie funzioni in `blender_ops.py`"
+  - problema: "Errore: `Eseguibile di Blender non trovato...`"
+    causa: "La variabile `BLENDER_EXECUTABLE` in `config.py` non punta al percorso corretto."
+    soluzione: "Verifica che il percorso costruito in `config.py` a partire da `BLENDER_INSTALL_ROOT` sia corretto per la tua installazione."
+
+  - problema: "Errore: `Nessun file NIfTI o cartella DICOM valida trovata...`"
+    causa: "Le variabili `CLIENT_ID` e `PROJECT_SESSION_ID` in `config.py` non corrispondono alla struttura delle cartelle in `Input/`, oppure la cartella di input è vuota."
+    soluzione: "Assicurati che `Input/{CLIENT_ID}/{PROJECT_SESSION_ID}/` esista e contenga i dati corretti."
+
+  - problema: "La segmentazione fallisce o la GPU non viene usata."
+    causa: "Problemi con l'installazione di PyTorch o con i driver CUDA."
+    soluzione: "Assicurati di aver installato la versione corretta di PyTorch con supporto CUDA come specificato nella sezione di installazione. Verifica che i tuoi driver NVIDIA siano aggiornati."
+
+  - problema: "Un materiale non viene applicato correttamente e l'oggetto risulta grigio."
+    causa: "Errore nella catena di associazione: un errore di battitura in `segmentMappings.yaml` (nella `biological_category`) o in `blender_shader_registry.yaml` (nello `shader_ref` o nel nome del materiale)."
+    soluzione: "Controlla attentamente i nomi in entrambi i file YAML. Verifica che la `biological_category` assegnata al segmento in `segmentMappings.yaml` esista in `blender_shader_registry.yaml` e che lo `shader_ref` a cui punta sia corretto."
+
+# ===================================================================
+# 9. RIFERIMENTO OPERAZIONI (per Sviluppatori)
+# ===================================================================
+riferimento_operazioni:
+  descrizione: "Mappatura tra le operazioni logiche e le funzioni nel codice."
+  operazioni:
+    - id: "OpsSeg01"
+      nome: "Fetch Input Data"
+      funzione: "segmentator_ops.fetch_input_files"
+    - id: "OpsSeg02"
+      nome: "Run Segmentation"
+      funzione: "segmentator_ops.run_total_segmentator"
+    - id: "OpsSeg03"
+      nome: "Export STLs"
+      funzione: "segmentator_ops.export_stl_from_multilabel_nii"
+    - id: "OpsBld01"
+      nome: "Import & Optimize Meshes"
+      funzioni:
+        - "blender_ops.import_meshes_into_blender_scene"
+        - "blender_ops.decimate_mesh_objects"
+    - id: "OpsBld02"
+      nome: "Apply Materials"
+      funzione: "blender_ops.apply_materials_from_manifest"
+    - id: "OpsBld03"
+      nome: "Bake Textures"
+      funzione: "blender_ops.bake_textures"
+    - id: "OpsBld04"
+      nome: "Generate URP Map"
+      funzione: "blender_ops.create_metallic_smoothness_map"
+    - id: "OpsBld05"
+      nome: "Export Models"
+      funzioni:
+        - "blender_ops.export_glb"
+        - "blender_ops.export_fbx"
