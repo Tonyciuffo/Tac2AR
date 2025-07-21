@@ -59,6 +59,12 @@ PROJECT_SESSION_ID = "Caso_N"
 8) Esegui con:
 python Main.py
 
+9) Nella directory di Output verranno generati:
+- Un file glb in standard PRB
+- Un file fbx in standard UPR
+- Una direcotry Textures con tutte le texture nei due standard (la metalness nel formato URP viene chiamata "_MetallicSmoothness")
+- 2 scene blender a monte e a valle del bake (uno con history ed uno per debug)
+- 2 manifest in formato json con l'associazione segmenti-materiali prima e dopo l'interrogazione del database snomed (al momento viene interrogato il csv fornito con totalsegmentator)
 
 9) E' possibile lanciare i processi di segmentazione e di fix delle geometrie indipendentemente con:
 python execute_segmentator_pipeline.py
