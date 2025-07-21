@@ -60,7 +60,7 @@ installazione:
         pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
     - step: 5
       action: "Setup di Blender"
-      details: "La pipeline richiede Blender 4.2 LTS. Se non è già presente nella root del progetto, scaricarlo, estrarlo e rinominare la cartella in 'Blender'."
+      details: "La pipeline richiede Blender 4.5 LTS. Se non è già presente nella root del progetto, scaricarlo, estrarlo e rinominare la cartella in 'Blender'."
 
 # ===================================================================
 # 3. STRUTTURA DIRECTORY E CONVENZIONI
@@ -198,7 +198,11 @@ workflow_iterativo:
 troubleshooting:
   - problema: "L'esecuzione fallisce immediatamente con `ModuleNotFoundError: No module named 'yaml'` (o `numpy`, etc.)"
     causa: "Le librerie Python necessarie non sono installate nell'ambiente Python *interno* di Blender, che è separato dal tuo ambiente virtuale."
-    soluzione: "Devi installare le librerie usando l'eseguibile Python di Blender. Trova il percorso (es. `Blender/4.2/python/bin/python.exe`) e lancia: `percorso/a/python.exe -m pip install PyYAML numpy`."
+    soluzione: "Devi installare le librerie usando l'eseguibile Python di Blender. Trova il percorso (es. `Blender/4.5/python/bin/python.exe`) e lancia: `percorso/a/python.exe -m pip install PyYAML numpy`."
+
+  - problema: "Errore: `No module named 'bpy' durante la blender_pipeline`"
+    causa: "Non è installato pyYaml nell'ambiente di Blender - bug noto"
+    soluzione: "dalla root del progetto lanciare .\Blender\4.5\python\bin\python.exe -m pip install pyYaml"
 
   - problema: "Errore: `Eseguibile di Blender non trovato...`"
     causa: "La variabile `BLENDER_EXECUTABLE` in `config.py` non punta al percorso corretto."

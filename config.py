@@ -83,7 +83,7 @@ URP_FILENAME = f"{PROJECT_SESSION_ID}{OUTPUT_SUFFIX}.{EXTENSION_URP}" # Esempio:
 
 BLENDER_INSTALL_ROOT = os.path.join(PROJECT_ROOT_DIR, "Blender") # QUESTA DEVE ESSERE LA CARTELLA CHE CONTIENE DIRETTAMENTE "blender.exe"
 BLENDER_EXECUTABLE = os.path.join(BLENDER_INSTALL_ROOT, "blender.exe")
-BLENDER_PYTHON_DIR = "4.2\\python\\bin"
+BLENDER_PYTHON_DIR = "4.5\\python\\bin"
 BLENDER_DEVICE = "GPU" # Device for baking ('CPU', 'CUDA', 'OPTIX')
 # Directory per gli add-on di Blender
 BLENDER_STL_ADDON_NAME = 'io_mesh_stl'

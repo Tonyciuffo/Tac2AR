@@ -116,26 +116,29 @@ def _get_material_color(obj_name, segment_mappings):
 # --- Import and Export Functions ---
 
 def import_stl_file(filepath, new_name):
-    bpy.ops.import_mesh.stl(filepath=filepath)
+    bpy.ops.wm.stl_import(filepath=filepath) # Blender 4.5
+    # bpy.ops.import_mesh.stl(filepath=filepath) # Blender 4.2 (fallback)
     if bpy.context.selected_objects:
         obj = bpy.context.selected_objects[0]
         return _rename_imported_objects(obj, new_name)
     return []
 
 def import_obj_file(filepath, new_name):
-    bpy.ops.import_scene.obj(filepath=filepath)
+    bpy.ops.wm.obj_import(filepath=filepath) # Blender 4.5
+    # bpy.ops.import_scene.obj(filepath=filepath) # Blender 4.2 (fallback)
     if bpy.context.selected_objects:
         return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
     return []
 
 def import_fbx_file(filepath, new_name):
-    bpy.ops.import_scene.fbx(filepath=filepath)
+    bpy.ops.wm.fbx_import(filepath=filepath) # Blender 4.5
+    # bpy.ops.import_scene.fbx(filepath=filepath) # Blender 4.2 (fallback)
     if bpy.context.selected_objects:
         return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
     return []
 
 def import_glb_file(filepath, new_name):
-    bpy.ops.import_scene.gltf(filepath=filepath)
+    bpy.ops.import_scene.gltf(filepath=filepath) # 4.2 Format
     if bpy.context.selected_objects:
         return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
     return []

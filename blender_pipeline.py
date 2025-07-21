@@ -26,9 +26,9 @@ except Exception as e:
     sys.exit(1)
 
 # Aggiungi il percorso degli add-on di Blender al sys.path DOPO l'import di config
-if config.BLENDER_STL_ADDON_DIR not in sys.path:
-    sys.path.append(config.BLENDER_STL_ADDON_DIR)
-print(f"DEBUG: Aggiunto al sys.path: {config.BLENDER_STL_ADDON_DIR}")
+# if config.BLENDER_STL_ADDON_DIR not in sys.path:
+#    sys.path.append(config.BLENDER_STL_ADDON_DIR)
+# print(f"DEBUG: Aggiunto al sys.path: {config.BLENDER_STL_ADDON_DIR}")
 
 def execute_blender_pipeline():
     """
@@ -43,15 +43,15 @@ def execute_blender_pipeline():
     print(f"  Textures directory ensured: {config.TEXTURES_DIR}")
 
     # Enable STL add-on
-    addon_name = config.BLENDER_STL_ADDON_NAME
-    if not bpy.context.preferences.addons.get(addon_name) or not bpy.context.preferences.addons[addon_name].bl_info.get('enabled'):
-        print(f"  Attempting to enable add-on '{addon_name}'...")
-        try:
-            bpy.ops.preferences.addon_enable(module=addon_name)
-            print(f"  Add-on '{addon_name}' enabled.")
-        except Exception as e:
-            print(f"  Error enabling add-on '{addon_name}': {e}")
-            return
+#    addon_name = config.BLENDER_STL_ADDON_NAME
+#    if not bpy.context.preferences.addons.get(addon_name) or not bpy.context.preferences.addons[addon_name].bl_info.get('enabled'):
+#        print(f"  Attempting to enable add-on '{addon_name}'...")
+#        try:
+#            bpy.ops.preferences.addon_enable(module=addon_name)
+#            print(f"  Add-on '{addon_name}' enabled.")
+#        except Exception as e:
+#            print(f"  Error enabling add-on '{addon_name}': {e}")
+#            return
 
     # --- 1. Setup Iniziale ---
     print("\n--- Fase 1: Setup Ambiente e Scena ---")
