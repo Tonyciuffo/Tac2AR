@@ -219,6 +219,10 @@ def export_stl_from_multilabel_nii(nii_filepath, all_segment_data, combined_mesh
         print(f"DEBUG: Caricamento del file NIfTI: {nii_filepath}")
         nii_img = nib.load(nii_filepath)
         nii_data = nii_img.get_fdata()
+        # --- FIX: Estrai la spaziatura dei voxel dall'header ---
+        voxel_spacing = nii_img.header.get_zooms()
+        print(f"DEBUG: Spaziatura Voxel rilevata (mm): {voxel_spacing}")
+        # ---------------------------------------------------------
     except Exception as e:
         print(f"ERRORE CRITICO nel caricamento del file NIfTI: {e}")
         return
@@ -266,7 +270,7 @@ def export_stl_from_multilabel_nii(nii_filepath, all_segment_data, combined_mesh
                 # Esporta il volume combinato
                 if combined_volume is not None and np.sum(combined_volume) > 0:
                     output_stl_path = os.path.join(output_dir, f"{group_name}.stl")
-                    convert_nii_to_stl(combined_volume.astype(np.uint8), output_stl_path)
+                    convert_nii_to_stl(combined_volume.astype(np.uint8), output_stl_path, spacing=voxel_spacing)
                     
                     # Aggiungi una voce per il gruppo combinato al dizionario principale
                     all_segment_data[group_name] = {
@@ -300,23 +304,23 @@ def export_stl_from_multilabel_nii(nii_filepath, all_segment_data, combined_mesh
             
             volume_mask = (nii_data == segment_id)
             output_stl_path = os.path.join(output_dir, f"{seg_name}.stl")
-            convert_nii_to_stl(volume_mask, output_stl_path)
+            convert_nii_to_stl(volume_mask, output_stl_path, spacing=voxel_spacing)
         else:
              print(f"  Segmento '{seg_name}' contrassegnato per non essere esportato individualmente.")
 
     print("\n--- Esportazione Mesh STL Completata ---")
 
-def convert_nii_to_stl(volume, output_stl_path):
+def convert_nii_to_stl(volume, output_stl_path, spacing=(1.0, 1.0, 1.0)):
     """
     Converte un volume numpy in un file STL usando marching cubes e PyVista.
-    Applica trasformazioni per orientamento e scala.
+    Applica trasformazioni per orientamento, scala e spaziatura voxel.
     """
     if np.sum(volume) == 0:
         print(f"Attenzione: il volume per '{os.path.basename(output_stl_path)}' e' vuoto. Salto la creazione del mesh.")
         return
 
-    # Estrai la superficie usando marching_cubes
-    vertices, faces, _, _ = marching_cubes(volume, level=0.5)
+    # Estrai la superficie usando marching_cubes, tenendo conto della spaziatura
+    vertices, faces, _, _ = marching_cubes(volume, level=0.5, spacing=spacing)
 
     # Converte le facce nel formato compatibile con PyVista
     # Prependi una colonna di '3' (per indicare triangoli) a ogni faccia

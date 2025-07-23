@@ -111,77 +111,77 @@ individual_mesh_export:
 
   aorta:
     display_name: "Aorta"
-    export: False
+    export: True
     biological_category: "Vessel"
 
   inferior_vena_cava:
     display_name: "Inferior Vena Cava"
-    export: False
+    export: True
     biological_category: "Vessel"
 
   portal_vein_and_splenic_vein:
     display_name: "Portal and Splenic Vein"
-    export: False
+    export: True
     biological_category: "Vessel"
 
   iliac_artery_left:
     display_name: "Left Iliac Artery"
-    export: False
+    export: True
     biological_category: "Vessel"
 
   iliac_artery_right:
     display_name: "Right Iliac Artery"
-    export: False
+    export: True
     biological_category: "Vessel"
 
   iliac_vena_left:
     display_name: "Left Iliac Vena"
-    export: False
+    export: True
     biological_category: "Vessel"
 
   iliac_vena_right:
     display_name: "Right Iliac Vena"
-    export: False
+    export: True
     biological_category: "Vessel"
 
   humerus_left:
     display_name: "Left Humerus"
-    export: False
+    export: True
     biological_category: "Bone"
 
   humerus_right:
     display_name: "Right Humerus"
-    export: False
+    export: True
     biological_category: "Bone"
 
   scapula_left:
     display_name: "Left Scapula"
-    export: False
+    export: True
     biological_category: "Bone"
 
   scapula_right:
     display_name: "Right Scapula"
-    export: False
+    export: True
     biological_category: "Bone"
 
   clavicula_left:
     display_name: "Left Clavicula"
-    export: False
+    export: True
     biological_category: "Bone"
 
   clavicula_right:
     display_name: "Right Clavicula"
-    export: False
+    export: True
     biological_category: "Bone"
 
   femur_left:
     display_name: "Left Femur"
-    export: False
+    export: True
     biological_category: "Bone"
 
   femur_right:
     display_name: "Right Femur"
-    export: False
+    export: True
     biological_category: "Bone"
 
   hip_left:
@@ -196,52 +196,52 @@ individual_mesh_export:
 
   gluteus_maximus_left:
     display_name: "Left Gluteus Maximus"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   gluteus_maximus_right:
     display_name: "Right Gluteus Maximus"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   gluteus_medius_left:
     display_name: "Left Gluteus Medius"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   gluteus_medius_right:
     display_name: "Right Gluteus Medius"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   gluteus_minimus_left:
     display_name: "Left Gluteus Minimus"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   gluteus_minimus_right:
     display_name: "Right Gluteus Minimus"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   autochthon_left:
     display_name: "Left Autochthon"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   autochthon_right:
     display_name: "Right Autochthon"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   iliopsoas_left:
     display_name: "Left Iliopsoas"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   iliopsoas_right:
     display_name: "Right Iliopsoas"
-    export: False
+    export: True
     biological_category: "Muscle"
 
   brain:

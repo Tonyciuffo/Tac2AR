@@ -25,11 +25,6 @@ except Exception as e:
     print(f"ERRORE INATTESO durante l'importazione: {e}")
     sys.exit(1)
 
-# Aggiungi il percorso degli add-on di Blender al sys.path DOPO l'import di config
-# if config.BLENDER_STL_ADDON_DIR not in sys.path:
-#    sys.path.append(config.BLENDER_STL_ADDON_DIR)
-# print(f"DEBUG: Aggiunto al sys.path: {config.BLENDER_STL_ADDON_DIR}")
-
 def execute_blender_pipeline():
     """
     Orchestra l'intera pipeline di elaborazione 3D all'interno di Blender.
@@ -41,17 +36,6 @@ def execute_blender_pipeline():
     os.makedirs(config.TEXTURES_DIR, exist_ok=True)
     print(f"  Output directory ensured: {config.OUTPUT_DIR}")
     print(f"  Textures directory ensured: {config.TEXTURES_DIR}")
-
-    # Enable STL add-on
-#    addon_name = config.BLENDER_STL_ADDON_NAME
-#    if not bpy.context.preferences.addons.get(addon_name) or not bpy.context.preferences.addons[addon_name].bl_info.get('enabled'):
-#        print(f"  Attempting to enable add-on '{addon_name}'...")
-#        try:
-#            bpy.ops.preferences.addon_enable(module=addon_name)
-#            print(f"  Add-on '{addon_name}' enabled.")
-#        except Exception as e:
-#            print(f"  Error enabling add-on '{addon_name}': {e}")
-#            return
 
     # --- 1. Setup Iniziale ---
     print("\n--- Fase 1: Setup Ambiente e Scena ---")
@@ -96,22 +80,25 @@ def execute_blender_pipeline():
         return
     print(f"  Importati {len(imported_meshes)} mesh.")
 
-    # --- 5. Applicazione dei Materiali ---
-    print("\n--- Fase 5: Applicazione dei Materiali ---")
+    # --- 5. Applicazione Scala Globale ---
+    blender_ops.apply_world_scale(imported_meshes, config.WORLD_SCALE_FACTOR)
+
+    # --- 6. Applicazione dei Materiali ---
+    print("\n--- Fase 6: Applicazione dei Materiali ---")
     blender_ops.apply_materials_from_manifest(imported_meshes, enriched_manifest)
    
-    # --- 6. Ottimizzazione dei Mesh ---
-    print("\n--- Fase 6: Ottimizzazione dei Mesh ---")
+    # --- 7. Ottimizzazione dei Mesh ---
+    print("\n--- Fase 7: Ottimizzazione dei Mesh ---")
     blender_ops.fix_normal_orientation(imported_meshes)
     blender_ops.merge_vertices_by_distance(imported_meshes, config.MERGE_DISTANCE)
     blender_ops.delete_small_features(imported_meshes)
     blender_ops.decimate_mesh_objects(imported_meshes, config.MAX_FACES_PER_MESH)
     blender_ops.apply_smoothing_normals(imported_meshes, config.NORMAL_SMOOTHING_METHOD)
 
-    # --- 7. Centratura e Gerarchia ---
-    print("\n--- Fase 7: Centratura e Creazione Gerarchia ---")
+    # --- 8. Centratura e Gerarchia ---
+    print("\n--- Fase 8: Centratura e Creazione Gerarchia ---")
     # Create a single root for all imported meshes
-    scene_root = blender_ops.create_single_scene_root(imported_meshes, bpy.context.scene.cursor.location, config.ROOT_NAME_BASE)
+    scene_root = blender_ops.create_single_scene_root(imported_meshes, config.ROOT_NAME_BASE)
     if not scene_root:
         print("ERRORE: Impossibile creare l'oggetto Root della scena. Interruzione della pipeline.")
         return

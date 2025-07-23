@@ -36,8 +36,14 @@ TEXTURE_SIZE = 512
 # Device da usare per il bake ('gpu' o 'cpu').
 BLENDER_DEVICE="gpu"
 
+# Fattore di scala per convertire le unità del file STL (tipicamente mm) nelle unità di Blender (m).
+# Default: 0.001 (per conversione da millimetri a metri).
+# Per pollici a metri, usare 0.0254.
+WORLD_SCALE_FACTOR = 0.001
+
 # Base per il nome dell'oggetto root generato da Blender (e.g., "GeneratedModel").
 ROOT_NAME_BASE = PROJECT_SESSION_ID
+ROOT_WORLD_POSITION = (0.0, 0.0, 0.0)
 
 # --- STRUTTURA DIRECTORY E FILE ---
 
@@ -85,9 +91,6 @@ BLENDER_INSTALL_ROOT = os.path.join(PROJECT_ROOT_DIR, "Blender") # QUESTA DEVE E
 BLENDER_EXECUTABLE = os.path.join(BLENDER_INSTALL_ROOT, "blender.exe")
 BLENDER_PYTHON_DIR = "4.5\\python\\bin"
 BLENDER_DEVICE = "GPU" # Device for baking ('CPU', 'CUDA', 'OPTIX')
-# Directory per gli add-on di Blender
-BLENDER_STL_ADDON_NAME = 'io_mesh_stl'
-BLENDER_STL_ADDON_DIR = os.path.join(BLENDER_INSTALL_ROOT, "4.2", "config", "scripts", "addons")
 
 # --- PERCORSI TOTAL SEGMENTATOR ---
 

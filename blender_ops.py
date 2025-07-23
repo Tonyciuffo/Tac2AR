@@ -8,6 +8,8 @@ import mathutils
 # Import config module to access global project settings
 import config 
 
+# --- Utility Functions ---
+
 def setup_blender_environment():
     """Sets up the Blender environment, including render engine and device."""
     print("\n--- Setting up Blender Environment ---")
@@ -45,73 +47,19 @@ def setup_blender_environment():
         print(f"  Device: {d['name']}, Enabled: {d['use']}")
     print(f"  Blender render engine set to CYCLES and device to {bpy.context.scene.cycles.device}.")
 
-# --- Utility Functions ---
+def clear_blender_scene():
+    """Clears all objects from the Blender scene."""
+    print("Clearing Blender scene...")
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+    print("Blender scene cleared.")
 
+def get_all_mesh_objects():
+    """Returns a list of all mesh objects in the current Blender scene."""
+    return [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
 
-def _rename_imported_objects(imported_objs, new_name):
-    """Helper function to rename imported objects, handling single or multiple."""
-    renamed_objects = []
-    if isinstance(imported_objs, list):
-        for obj in imported_objs:
-            obj.name = new_name
-            renamed_objects.append(obj)
-    elif imported_objs:
-        imported_objs.name = new_name
-        renamed_objects.append(imported_objs)
-    return renamed_objects
-
-def _get_blender_asset_details(shader_ref, segment_mappings, blender_assets):
-    """
-    Retrieves the physical Blender asset details (blend_file, blend_material)
-    for a given symbolic shader_ref.
-    """
-    if shader_ref not in blender_assets.get('blender_assets', {}): # Use .get() for safety
-        print(f"Error: Shader reference '{shader_ref}' not found in {config.BLENDER_SHADER_REGISTRY_FILE}.")
-        return None, None
-    
-    details = blender_assets['blender_assets'][shader_ref]
-    return details.get('blend_file'), details.get('blend_material')
-
-def _get_material_color(obj_name, segment_mappings):
-    """
-    Determines the base color for an object based on segment mappings and fallback categories.
-    """
-    # 1. Try to get color from specific segment mapping in individual_mesh_exports
-    if obj_name in segment_mappings.get('individual_mesh_exports', {}) and 'color' in segment_mappings['individual_mesh_exports'][obj_name]:
-        return segment_mappings['individual_mesh_exports'][obj_name]['color']
-    
-    # 2. Try to get color from specific segment mapping in combined_mesh_exports
-    if obj_name in segment_mappings.get('combined_mesh_exports', {}) and 'color' in segment_mappings['combined_mesh_exports'][obj_name]:
-        return segment_mappings['combined_mesh_exports'][obj_name]['color']
-
-    # 3. Try to get color from fallback category
-    # This logic assumes 'segment_mappings' in this function refers to the overall loaded YAML dict.
-    # We need to check if the obj_name exists in either individual or combined exports
-    # to derive its category or shader_ref.
-    
-    # Try to find segment details in individual_mesh_exports or combined_mesh_exports
-    seg_details = None
-    if obj_name in segment_mappings.get('individual_mesh_exports', {}):
-        seg_details = segment_mappings['individual_mesh_exports'][obj_name]
-    elif obj_name in segment_mappings.get('combined_mesh_exports', {}):
-        seg_details = segment_mappings['combined_mesh_exports'][obj_name]
-
-    if seg_details and 'category' in seg_details and seg_details['category'] in segment_mappings.get('fallback_categories', {}):
-        category_name = seg_details['category']
-        if 'default_color' in segment_mappings['fallback_categories'][category_name]:
-            return segment_mappings['fallback_categories'][category_name]['default_color']
-            
-    # 4. Try to get color from shader_dictionary default_color
-    if seg_details and 'shader_ref' in seg_details and seg_details['shader_ref'] in segment_mappings.get('shader_dictionary', {}):
-        shader_ref = seg_details['shader_ref']
-        if 'default_color' in segment_mappings['shader_dictionary'][shader_ref]:
-            return segment_mappings['shader_dictionary'][shader_ref]['default_color']
-
-    # 5. Fallback to default shader color if nothing else is found
-    if 'default_shader' in segment_mappings.get('shader_dictionary', {}) and 'default_color' in segment_mappings['shader_dictionary']['default_shader']:
-        return segment_mappings['shader_dictionary']['default_shader']['default_color']
-
-    return "#808080" # Final fallback: gray
 
 # --- Import and Export Functions ---
 
@@ -120,65 +68,28 @@ def import_stl_file(filepath, new_name):
     # bpy.ops.import_mesh.stl(filepath=filepath) # Blender 4.2 (fallback)
     if bpy.context.selected_objects:
         obj = bpy.context.selected_objects[0]
-        return _rename_imported_objects(obj, new_name)
+        return rename_imported_objects(obj, new_name)
     return []
 
 def import_obj_file(filepath, new_name):
     bpy.ops.wm.obj_import(filepath=filepath) # Blender 4.5
     # bpy.ops.import_scene.obj(filepath=filepath) # Blender 4.2 (fallback)
     if bpy.context.selected_objects:
-        return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
+        return rename_imported_objects(list(bpy.context.selected_objects), new_name)
     return []
 
 def import_fbx_file(filepath, new_name):
     bpy.ops.wm.fbx_import(filepath=filepath) # Blender 4.5
     # bpy.ops.import_scene.fbx(filepath=filepath) # Blender 4.2 (fallback)
     if bpy.context.selected_objects:
-        return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
+        return rename_imported_objects(list(bpy.context.selected_objects), new_name)
     return []
 
 def import_glb_file(filepath, new_name):
     bpy.ops.import_scene.gltf(filepath=filepath) # 4.2 Format
     if bpy.context.selected_objects:
-        return _rename_imported_objects(list(bpy.context.selected_objects), new_name)
+        return rename_imported_objects(list(bpy.context.selected_objects), new_name)
     return []
-
-def import_meshes_into_blender_scene(input_folder_path):
-    """
-    Imports STL mesh files from the specified folder.
-    Imports all .stl files found in the directory.
-    """
-    imported_objects = []
-    print("\n--- Phase: Automatic File Import ---")
-
-    if not os.path.exists(input_folder_path):
-        print(f"  Input folder not found: {input_folder_path}. No meshes to import.")
-        return []
-
-    for filename in os.listdir(input_folder_path):
-        filepath = os.path.join(input_folder_path, filename)
-        name_without_ext = os.path.splitext(filename)[0]
-        file_extension = os.path.splitext(filename)[1].lower()
-
-        if not os.path.isfile(filepath):
-            continue # Skip directories or other non-file entries
-
-        imported_this_file = []
-        if file_extension == '.stl':
-            imported_this_file = import_stl_file(filepath, name_without_ext)
-        else:
-            print(f"  Unsupported file type for '{filename}': {file_extension}. Skipping (only .stl is supported).")
-            continue
-        
-        if imported_this_file:
-            imported_objects.extend(imported_this_file)
-            print(f"  Imported '{filename}' as '{name_without_ext}' (Type: {file_extension.upper()}).")
-        else:
-            print(f"  Failed to import '{filename}'.")
-            
-    if not imported_objects:
-        print(f"  No .stl meshes found in '{input_folder_path}'.")
-    return imported_objects
 
 def export_glb(filepath, root_object_to_export):
     """Exports the specified root object and its children to GLB format."""
@@ -231,7 +142,6 @@ def export_fbx(filepath, objects_to_export):
     print(f"Exported FBX: {filepath}")
     bpy.ops.object.select_all(action='DESELECT')
 
-
 def save_blender_scene(output_dir, filename):
     """Saves the current Blender scene to a .blend file."""
     if not os.path.exists(output_dir):
@@ -242,21 +152,89 @@ def save_blender_scene(output_dir, filename):
     bpy.ops.wm.save_as_mainfile(filepath=filepath)
     print(f"  Blender scene saved to: {filepath}")
 
+def rename_imported_objects(imported_objs, new_name):
+    """Helper function to rename imported objects, handling single or multiple."""
+    renamed_objects = []
+    if isinstance(imported_objs, list):
+        for obj in imported_objs:
+            obj.name = new_name
+            renamed_objects.append(obj)
+    elif imported_objs:
+        imported_objs.name = new_name
+        renamed_objects.append(imported_objs)
+    return renamed_objects
 
-# --- Scene Management and Cleaning Functions ---
+def import_meshes_into_blender_scene(input_folder_path):
+    """
+    Imports STL mesh files from the specified folder.
+    Imports all .stl files found in the directory.
+    """
+    imported_objects = []
+    print("\n--- Phase: Automatic File Import ---")
 
-def clear_blender_scene():
-    """Clears all objects from the Blender scene."""
-    print("Clearing Blender scene...")
-    if bpy.ops.object.mode_set.poll():
-        bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.delete()
-    print("Blender scene cleared.")
+    if not os.path.exists(input_folder_path):
+        print(f"  Input folder not found: {input_folder_path}. No meshes to import.")
+        return []
 
-def get_all_mesh_objects():
-    """Returns a list of all mesh objects in the current Blender scene."""
-    return [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
+    for filename in os.listdir(input_folder_path):
+        filepath = os.path.join(input_folder_path, filename)
+        name_without_ext = os.path.splitext(filename)[0]
+        file_extension = os.path.splitext(filename)[1].lower()
+
+        if not os.path.isfile(filepath):
+            continue # Skip directories or other non-file entries
+
+        imported_this_file = []
+        if file_extension == '.stl':
+            imported_this_file = import_stl_file(filepath, name_without_ext)
+        else:
+            print(f"  Unsupported file type for '{filename}': {file_extension}. Skipping (only .stl is supported).")
+            continue
+        
+        if imported_this_file:
+            imported_objects.extend(imported_this_file)
+            print(f"  Imported '{filename}' as '{name_without_ext}' (Type: {file_extension.upper()}).")
+        else:
+            print(f"  Failed to import '{filename}'.")
+            
+    if not imported_objects:
+        print(f"  No .stl meshes found in '{input_folder_path}'.")
+    return imported_objects
+
+
+def apply_world_scale(mesh_objects, scale_factor):
+    """
+    Applies a uniform scale factor to all specified mesh objects and
+    then applies the scale transformation to make it permanent.
+    """
+    print(f"\n--- Phase: Applying World Scale Factor ({scale_factor}) ---")
+    
+    if not mesh_objects:
+        print("  No mesh objects to scale. Skipping.")
+        return
+
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
+            # Set the scale
+            obj.scale = (scale_factor, scale_factor, scale_factor)
+            print(f"  Set scale of '{obj.name}' to {obj.scale}.")
+
+    # Apply the scale to all mesh objects at once
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
+            obj.select_set(True)
+    
+    if bpy.context.selected_objects:
+        bpy.context.view_layer.objects.active = bpy.context.selected_objects[0]
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        print("  Applied scale transformation to all selected mesh objects.")
+    
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.context.view_layer.update()
+
+
+# --- Cleaning Functions ---
 
 def merge_vertices_by_distance(mesh_objects, distance):
     """Merges vertices in mesh objects within a given distance."""
@@ -404,49 +382,76 @@ def apply_all_modifiers(mesh_objects):
         obj.select_set(False)
     bpy.context.view_layer.update()
 
-def create_single_scene_root(mesh_objects, world_center_target, root_name_base):
+def create_single_scene_root(mesh_objects, root_name_base):
     """
-    Creates a single empty object at the world center and parents all mesh_objects to it.
-    This maintains their relative positions while providing a unified root for the scene.
+    Calculates the geometric center of all mesh_objects, creates a Root empty at that center,
+    parents all meshes to it, and then moves the Root to the world origin (0,0,0).
+    This centers the entire group while preserving relative positions.
     Returns the created root object.
     """
-    print("\n--- Phase: Creating Single Scene Root ---")
-    
-    # Deselect all objects first
-    bpy.ops.object.select_all(action='DESELECT')
+    print("\n--- Phase: Centering Scene and Creating Hierarchy ---")
 
-    # Create the single root empty object
-    root_name = f"{root_name_base}_Root"
-    root_object = bpy.data.objects.get(root_name)
-    if not root_object:
-        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=world_center_target)
-        root_object = bpy.context.active_object
-        root_object.name = root_name
-        print(f"  Created single Root object: '{root_object.name}' at {world_center_target}.")
-    else:
-        root_object.location = world_center_target
-        print(f"  Root object '{root_object.name}' already exists. Location updated to {root_object.location}.")
+    if not mesh_objects:
+        print("  No mesh objects provided to center. Skipping.")
+        return None
 
-    # Parent all mesh objects to this single root
+    # 1. Calculate the combined bounding box of all mesh objects in world space
+    min_coord = mathutils.Vector((float('inf'), float('inf'), float('inf')))
+    max_coord = mathutils.Vector((float('-inf'), float('-inf'), float('-inf')))
+
     for obj in mesh_objects:
         if obj.type == 'MESH':
-            # Ensure object is in object mode before parenting
+            # obj.bound_box gives 8 corners in local space. Transform them to world space.
+            world_corners = [obj.matrix_world @ mathutils.Vector(corner) for corner in obj.bound_box]
+            for corner in world_corners:
+                min_coord.x = min(min_coord.x, corner.x)
+                min_coord.y = min(min_coord.y, corner.y)
+                min_coord.z = min(min_coord.z, corner.z)
+                max_coord.x = max(max_coord.x, corner.x)
+                max_coord.y = max(max_coord.y, corner.y)
+                max_coord.z = max(max_coord.z, corner.z)
+
+    # 2. Calculate the center of the combined bounding box
+    if min_coord.x == float('inf'):
+        print("  Could not determine bounding box. Using world origin as center.")
+        bounding_box_center = mathutils.Vector((0.0, 0.0, 0.0))
+    else:
+        bounding_box_center = (min_coord + max_coord) / 2.0
+    print(f"  Calculated geometric center of all meshes: {bounding_box_center}")
+
+    # 3. Create the single root empty object at the calculated center
+    root_name = f"{root_name_base}_Root"
+    bpy.ops.object.select_all(action='DESELECT')
+    root_object = bpy.data.objects.get(root_name)
+    if not root_object:
+        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=bounding_box_center)
+        root_object = bpy.context.active_object
+        root_object.name = root_name
+        print(f"  Created single Root object: '{root_object.name}' at calculated center.")
+    else:
+        root_object.location = bounding_box_center
+        print(f"  Root object '{root_object.name}' already exists. Location updated to calculated center.")
+
+    # 4. Parent all mesh objects to this single root
+    for obj in mesh_objects:
+        if obj.type == 'MESH':
             if bpy.ops.object.mode_set.poll():
                 bpy.ops.object.mode_set(mode='OBJECT')
             
-            # Clear any existing parent first to avoid issues
             if obj.parent:
-                obj.parent = None
-                print(f"  Cleared existing parent for '{obj.name}'.")
+                obj.parent = None # Clear existing parent
 
             obj.parent = root_object
-            # Keep transform (important to maintain relative position)
             obj.matrix_parent_inverse = root_object.matrix_world.inverted()
             print(f"  '{obj.name}' parented to '{root_object.name}'.")
 
+    # 5. Move the Root (and all its children) to the world origin
+    root_object.location = config.ROOT_WORLD_POSITION
+    print(f"  Moved Root '{root_object.name}' to world origin (0,0,0), centering the group.")
+
     bpy.context.view_layer.update()
-    print(f"  Single scene root '{root_object.name}' created and meshes parented.")
     return root_object
+
 
 # --- Material Application Functions ---
 
@@ -541,15 +546,20 @@ def apply_materials_from_manifest(imported_meshes, enriched_manifest):
     for obj in imported_meshes:
         mat_name = obj.get('material_to_assign')
         if mat_name:
-            material = bpy.data.materials.get(mat_name)
-            if material:
+            base_material = bpy.data.materials.get(mat_name)
+            if base_material:
+                # Create a unique copy of the material for this object
+                new_mat = base_material.copy()
+                new_mat.name = f"{obj.name}_{mat_name}" # e.g., "spleen_organ_2_mat"
+                
+                # Assign the new, unique material to the object
                 if obj.data.materials:
-                    obj.data.materials[0] = material
+                    obj.data.materials[0] = new_mat
                 else:
-                    obj.data.materials.append(material)
-                print(f"  Applied material '{mat_name}' to '{obj.name}'.")
+                    obj.data.materials.append(new_mat)
+                print(f"  Applied unique material '{new_mat.name}' (copy of '{mat_name}') to '{obj.name}'.")
             else:
-                print(f"  ERROR: Material '{mat_name}' not found after append for object '{obj.name}'.")
+                print(f"  ERROR: Base material '{mat_name}' not found after append for object '{obj.name}'.")
 
 # --- Bake Functions ---
 
@@ -606,7 +616,6 @@ def bake_setup(device):
     bpy.context.scene.render.engine = 'CYCLES'
     bpy.context.scene.cycles.device = device
     print(f"  Cycles render engine and {device} device set for baking.")
-
 
 def bake_channel(mesh_object, channel_type, textures_dir, texture_size, color_space):
     """Generic function to bake a specific channel (Color, Normal, Roughness, etc.)."""
@@ -740,142 +749,6 @@ def remove_bake_temp_nodes(node_names_to_remove): # <--- Accetta NOMI, non ogget
                 #     print(f"  Node '{node_name}' not found in material '{mat.name}'.")
     
     print(f"  Total {nodes_removed_count} temporary bake nodes removed across all materials.")
-    bpy.context.view_layer.update()
-
-def OLD_remove_bake_temp_nodes(mesh_objects):
-    """Removes temporary bake texture nodes from materials."""
-    print("\n--- Phase: Removing Temporary Bake Texture Nodes ---")
-    for obj in mesh_objects:
-        if not obj or not obj.data.materials:
-            continue
-        
-        mat = obj.data.materials[0] # Assumes material is at index 0
-        if not mat or not mat.use_nodes:
-            continue
-            
-        nodes = mat.node_tree.nodes
-        
-        # Nodes that might have been created for baking
-        node_names_to_check = [
-            f"{obj.name}_diffuse", 
-            f"{obj.name}_normal",
-            f"{obj.name}_roughness",
-            f"{obj.name}_metallic", # Added for the new base metallic map
-            f"NormalMap_{obj.name}", # Also the temporary Normal Map node
-            f"{obj.name}_MetallicSmoothness_map" # Added for MetallicSmoothness node
-        ]
-        
-        nodes_to_remove = []
-        for node_name in node_names_to_check:
-            if node_name in nodes:
-                nodes_to_remove.append(nodes[node_name])
-        
-        for node_to_remove in nodes_to_remove:
-            # Store the name BEFORE removing the node
-            node_name_for_print = node_to_remove.name 
-            nodes.remove(node_to_remove)
-            print(f"  Removed temporary bake/linking node '{node_name_for_print}' from '{obj.name}'.")
-    bpy.context.view_layer.update()
-
-def OLD_link_baked_textures(imported_meshes, textures_dir):
-    """Links baked textures to the Principled BSDF node in the material of each mesh."""
-    print("\n--- Phase: Linking Baked Texture Nodes (PBR Standard for GLB/General) ---")
-    for obj in imported_meshes:
-        if not obj or not obj.data.materials:
-            continue
-        
-        mat = obj.data.materials[0] # Assumes material is at index 0
-        if not mat or not mat.use_nodes:
-            continue
-            
-        nodes = mat.node_tree.nodes
-        links = mat.node_tree.links
-        
-        principled_bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
-        if not principled_bsdf:
-            print(f"  Principled BSDF node not found in material of '{obj.name}'. Skipping linking.")
-            continue
-
-        # Load and link Albedo (Diffuse) Image
-        albedo_img_path = os.path.join(textures_dir, f"{obj.name}_diffuse.png")
-        if os.path.exists(albedo_img_path):
-            albedo_image = bpy.data.images.load(albedo_img_path)
-            albedo_image_node = nodes.new('ShaderNodeTexImage')
-            albedo_image_node.image = albedo_image
-            albedo_image_node.label = "Baked Albedo"
-            albedo_image_node.location = (-800, 300)
-            albedo_image_node.interpolation = 'Linear'
-            albedo_image.colorspace_settings.name = 'sRGB'
-            # Clear existing links to Base Color
-            if 'Base Color' in principled_bsdf.inputs:
-                for link in principled_bsdf.inputs['Base Color'].links: links.remove(link)
-                links.new(albedo_image_node.outputs['Color'], principled_bsdf.inputs['Base Color'])
-                print(f"  Linked Albedo map to Principled BSDF for '{obj.name}'.")
-            else:
-                print(f"  Warning: Principled BSDF has no 'Base Color' input for '{obj.name}'.")
-
-
-        # Load and link Normal Image
-        normal_img_path = os.path.join(textures_dir, f"{obj.name}_normal.png")
-        if os.path.exists(normal_img_path):
-            normal_image = bpy.data.images.load(normal_img_path)
-            normal_image_node = nodes.new('ShaderNodeTexImage')
-            normal_image_node.image = normal_image
-            normal_image_node.label = "Baked Normal"
-            normal_image_node.location = (-800, 0)
-            normal_image_node.interpolation = 'Linear'
-            normal_image.colorspace_settings.name = 'Non-Color' # Important for normals
-            
-            normal_map_node = nodes.new('ShaderNodeNormalMap')
-            normal_map_node.label = "Normal Map"
-            normal_map_node.location = (-600, 0)
-            
-            links.new(normal_image_node.outputs['Color'], normal_map_node.inputs['Color'])
-            # Clear existing links to Normal
-            if 'Normal' in principled_bsdf.inputs: # Check if input exists
-                for link in principled_bsdf.inputs['Normal'].links: links.remove(link)
-                links.new(normal_map_node.outputs['Normal'], principled_bsdf.inputs['Normal'])
-                print(f"  Linked Normal map to Principled BSDF for '{obj.name}'.")
-            else:
-                print(f"  Warning: Principled BSDF has no 'Normal' input for '{obj.name}'.")
-
-
-        # Load and link Roughness Image (for PBR standard)
-        roughness_img_path = os.path.join(textures_dir, f"{obj.name}_roughness.png")
-        if os.path.exists(roughness_img_path):
-            roughness_image = bpy.data.images.load(roughness_img_path)
-            roughness_image_node = nodes.new('ShaderNodeTexImage')
-            roughness_image_node.image = roughness_image
-            roughness_image_node.label = "Baked Roughness"
-            roughness_image_node.location = (-800, -300)
-            roughness_image_node.interpolation = 'Linear'
-            roughness_image.colorspace_settings.name = 'Non-Color' # Important for roughness
-            # Clear existing links to Roughness
-            if 'Roughness' in principled_bsdf.inputs:
-                for link in principled_bsdf.inputs['Roughness'].links: links.remove(link)
-                links.new(roughness_image_node.outputs['Color'], principled_bsdf.inputs['Roughness'])
-                print(f"  Linked Roughness map to Principled BSDF for '{obj.name}'.")
-            else:
-                print(f"  Warning: Principled BSDF has no 'Roughness' input for '{obj.name}'.")
-
-        # Load and link Metallic Image (for PBR Adobe workflow)
-        metallic_img_path = os.path.join(textures_dir, f"{obj.name}_metallic.png")
-        if os.path.exists(metallic_img_path):
-            metallic_image = bpy.data.images.load(metallic_img_path)
-            metallic_image_node = nodes.new('ShaderNodeTexImage')
-            metallic_image_node.image = metallic_image
-            metallic_image_node.label = "Baked Metallic"
-            metallic_image_node.location = (-800, -600) # Position below roughness
-            metallic_image_node.interpolation = 'Linear'
-            metallic_image.colorspace_settings.name = 'Non-Color' # Important for data
-            # Clear existing links to Metallic
-            if 'Metallic' in principled_bsdf.inputs:
-                for link in principled_bsdf.inputs['Metallic'].links: links.remove(link)
-                links.new(metallic_image_node.outputs['Color'], principled_bsdf.inputs['Metallic'])
-                print(f"  Linked Metallic map to Principled BSDF for '{obj.name}'.")
-            else:
-                print(f"  Warning: Principled BSDF has no 'Metallic' input for '{obj.name}'.")
-
     bpy.context.view_layer.update()
 
 def link_baked_textures(imported_meshes, textures_dir):
@@ -1056,7 +929,6 @@ def create_metallic_smoothness_map(mesh_objects, textures_dir, texture_size):
         # Clean up the loaded roughness image from Blender's memory if no longer needed
         bpy.data.images.remove(roughness_img, do_unlink=True)
         print(f"  Created MetallicSmoothness texture for {obj_name} at {metallic_smoothness_output_path}")
-        
 
 def create_base_metalness_map(mesh_objects, textures_dir, texture_size):
     """
@@ -1210,95 +1082,3 @@ def update_shader_nodes_for_unity_export(imported_meshes, textures_dir):
             
     bpy.context.view_layer.update()
     return nodes_created_by_unity_export_setup # Return new nodes for cleanup
-
-def OLD_update_shader_nodes_for_unity_export(imported_meshes, textures_dir):
-    """
-    Updates material nodes to use the combined MetallicSmoothness texture for Unity export consistency.
-    This function should be called AFTER create_metallic_smoothness_map.
-    """
-    print("\n--- Phase: Updating Shader Nodes for Unity (Metallic/Smoothness) ---")
-    for obj in imported_meshes:
-        obj_name = obj.name
-        if not obj or not obj.data.materials:
-            print(f"Object '{obj_name}' not found or has no materials. Skipping shader update.")
-            continue
-            
-        mat = obj.data.materials[0] # Assumes material is at index 0
-        nodes = mat.node_tree.nodes
-        links = mat.node_tree.links
-
-        mat.use_nodes = True # Ensure nodes are enabled
-        principled_bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
-        if not principled_bsdf:
-            print(f"  Principled BSDF node not found in material of '{obj.name}'. Cannot link MetallicSmoothness.")
-            continue
-
-        # Remove old Roughness and Metallic links if present
-        # Remove old Roughness and Metallic links if present
-        if 'Roughness' in principled_bsdf.inputs:
-            for link in principled_bsdf.inputs['Roughness'].links:
-                links.remove(link)
-            print(f"  Removed old Roughness link for '{obj.name}'.")
-        if 'Metallic' in principled_bsdf.inputs:
-            for link in principled_bsdf.inputs['Metallic'].links:
-                links.remove(link)
-            print(f"  Removed old Metallic link for '{obj.name}'.")
-
-        # Remove the old roughness and metallic image nodes if present
-        roughness_node_name = f"{obj_name}_roughness"
-        metallic_old_node_name = f"{obj_name}_metallic" # My previous metallic node name
-        
-        if roughness_node_name in nodes:
-            nodes.remove(nodes[roughness_node_name])
-            print(f"  Removed old roughness node '{roughness_node_name}' for '{obj.name}'.")
-        if metallic_old_node_name in nodes:
-            nodes.remove(nodes[metallic_old_node_name])
-            print(f"  Removed old metallic node '{metallic_old_node_name}' for '{obj.name}'.")
-
-
-        # Load the MetallicSmoothness image
-        metallic_smoothness_path = os.path.join(textures_dir, f"{obj_name}_MetallicSmoothness.png")
-        if not os.path.exists(metallic_smoothness_path):
-            print(f"  MetallicSmoothness texture missing for {obj_name} at {metallic_smoothness_path}. Skipping linking.")
-            continue
-
-        metallic_smoothness_img = bpy.data.images.load(metallic_smoothness_path)
-        metallic_smoothness_img.colorspace_settings.name = 'Non-Color' # Important for data
-        
-        metallic_smoothness_node_name = f"{obj_name}_MetallicSmoothness_map" # Descriptive name
-        metallic_smoothness_node = nodes.get(metallic_smoothness_node_name)
-        if not metallic_smoothness_node:
-            metallic_smoothness_node = nodes.new('ShaderNodeTexImage')
-            metallic_smoothness_node.name = metallic_smoothness_node_name
-            metallic_smoothness_node.image = metallic_smoothness_img
-            metallic_smoothness_node.location = (-800, -500) # Move to a sensible position
-            metallic_smoothness_node.interpolation = 'Linear'
-            print(f"  Created new MetallicSmoothness node '{metallic_smoothness_node_name}' for '{obj.name}'.")
-        else:
-            metallic_smoothness_node.image = metallic_smoothness_img # Ensure it points to the correct image
-            print(f"  MetallicSmoothness node '{metallic_smoothness_node_name}' already exists for '{obj.name}'.")
-
-        # Link Color output (R channel for Metalness) to Principled BSDF Metallic input
-        if 'Metallic' in principled_bsdf.inputs:
-            # Clear existing links to Metallic before creating new one
-            for link in principled_bsdf.inputs['Metallic'].links: links.remove(link)
-            links.new(metallic_smoothness_node.outputs['Color'], principled_bsdf.inputs['Metallic']) 
-            print(f"  Linked Metallic (R channel from MetallicSmoothness) map to Principled BSDF 'Metallic' for '{obj.name}'.")
-        else:
-            print(f"  Warning: Principled BSDF has no 'Metallic' input for '{obj.name}'.")
-
-        # Link Alpha output (Smoothness) to Principled BSDF Roughness input (no inversion needed, as it's already smoothness)
-        if 'Roughness' in principled_bsdf.inputs:
-            # Note: Blender's Principled BSDF expects Roughness. If MetallicSmoothness has Smoothness in Alpha,
-            # we need to INVERT it to get Roughness (Roughness = 1 - Smoothness).
-            # Clear existing links to Roughness before creating new one
-            for link in principled_bsdf.inputs['Roughness'].links: links.remove(link)
-            invert_node = nodes.new('ShaderNodeInvert')
-            invert_node.location = metallic_smoothness_node.location + mathutils.Vector((200, -100))
-            links.new(metallic_smoothness_node.outputs['Alpha'], invert_node.inputs['Color'])
-            links.new(invert_node.outputs['Color'], principled_bsdf.inputs['Roughness'])
-            print(f"  Linked Smoothness (A from MetallicSmoothness, then inverted to Roughness) map to Principled BSDF 'Roughness' for '{obj.name}'.")
-        else:
-            print(f"  Warning: Principled BSDF has no 'Roughness' input for '{obj.name}'.")
-        
-    bpy.context.view_layer.update()

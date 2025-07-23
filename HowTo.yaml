@@ -115,6 +115,7 @@ configurazione:
       - "TOTAL_SEGMENTATOR_TASKS": "Task per TotalSegmentator (es. `['total_mr']`)."
       - "MAX_FACES_PER_MESH": "Limite di poligoni per l'ottimizzazione."
       - "TEXTURE_SIZE": "Risoluzione delle texture (es. 512, 1024)."
+      - "WORLD_SCALE_FACTOR": "Fattore di scala per convertire le unità del modello importato (tipicamente millimetri) nelle unità di Blender (metri). Il default è 0.001."
 
   - file: "segmentMappings.yaml"
     descrizione: "File di interfaccia utente per definire le regole di esportazione dei segmenti."
@@ -202,7 +203,7 @@ troubleshooting:
 
   - problema: "Errore: `No module named 'bpy' durante la blender_pipeline`"
     causa: "Non è installato pyYaml nell'ambiente di Blender - bug noto"
-    soluzione: "dalla root del progetto lanciare .\Blender\4.5\python\bin\python.exe -m pip install pyYaml"
+    soluzione: "dalla root del progetto lanciare .\\Blender\\4.5\\python\\bin\\python.exe -m pip install pyYaml"
 
   - problema: "Errore: `Eseguibile di Blender non trovato...`"
     causa: "La variabile `BLENDER_EXECUTABLE` in `config.py` non punta al percorso corretto."
@@ -219,6 +220,10 @@ troubleshooting:
   - problema: "Un materiale non viene applicato correttamente e l'oggetto risulta grigio."
     causa: "Errore nella catena di associazione: un errore di battitura in `segmentMappings.yaml` (nella `biological_category`) o in `blender_shader_registry.yaml` (nello `shader_ref` o nel nome del materiale)."
     soluzione: "Controlla attentamente i nomi in entrambi i file YAML. Verifica che la `biological_category` assegnata al segmento in `segmentMappings.yaml` esista in `blender_shader_registry.yaml` e che lo `shader_ref` a cui punta sia corretto."
+
+  - problema: "I modelli 3D appaiono schiacciati o deformati su un asse (tipicamente quello verticale)."
+    causa: "Il file NIfTI di input ha una spaziatura dei voxel 'anisotropica' (es. i voxel sono 0.7mm x 0.7mm sul piano XY, ma 5mm di spessore sull'asse Z). Se l'algoritmo di creazione della mesh non tiene conto di questa informazione, tratta ogni voxel come un cubo perfetto, causando la deformazione."
+    soluzione: "La pipeline è stata corretta per leggere automaticamente i metadati di spaziatura dall'header del file NIfTI e applicarli durante la fase di generazione della mesh (marching cubes). Questo assicura che i modelli 3D finali rispettino le proporzioni anatomiche originali, indipendentemente dalla spaziatura dei voxel del file sorgente."
 
 # ===================================================================
 # 9. RIFERIMENTO OPERAZIONI (per Sviluppatori)
