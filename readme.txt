@@ -26,7 +26,7 @@ Linux/macOS: source venv/bin/activate
 
 4) installa i requirements
 
-pip install -e requirements.txt
+pip install -r requirements.txt
 
 5) Per abilitare l'accelerazione GPU installa PyTorch con CUDA (scegli la versione adatta alla tua scheda video):
 
@@ -36,14 +36,14 @@ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.o
 RTX serie 50 e superiori:
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-6) Scarica Blender 4.2 LTS ed estrai/copia la cartella estratta nella directory base del progetto con il nome "Blender":
+6) Scarica Blender 4.5 LTS ed estrai/copia la cartella estratta nella directory base del progetto con il nome "Blender":
 
 Windows: https://download.blender.org/release/Blender4.5/blender-4.5.0-windows-x64.zip
 Linux: https://download.blender.org/release/Blender4.5/blender-4.5.0-linux-x64.tar.xz
 MacOs (x64 - Intel): https://download.blender.org/release/Blender4.5/blender-4.5.0-macos-x64.dmg
 MacOs (arm64 -AMD): https://download.blender.org/release/Blender4.5/blender-4.5.0-macos-arm64.dmg
 
-7) Metti uno stack di DICOM nella directory Input
+7) Metti uno stack di DICOM o un NIfTI nella directory Input
 Ricorda di preparare una cartella per il cliente ed una sottocartella per la sessione
 (es. Ospedale_A\Caso_N\scan.nii)
 (es. Ospedale_A\Caso_N\DICOM\Images*.dcm)
@@ -84,3 +84,9 @@ ACKNOWLEDGMENTS / RINGRAZIAMENIT:
 
 Total Segmentator:
 https://pubs.rsna.org/doi/10.1148/ryai.230024
+
+Blender:
+https://www.blender.org/about/credits/
+
+Python:
+https://www.python.org/doc/copyright/
