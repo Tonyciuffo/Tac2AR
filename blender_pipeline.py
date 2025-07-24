@@ -85,7 +85,8 @@ def execute_blender_pipeline():
 
     # --- 6. Applicazione dei Materiali ---
     print("\n--- Fase 6: Applicazione dei Materiali ---")
-    blender_ops.apply_materials_from_manifest(imported_meshes, enriched_manifest)
+    material_nodes_created = blender_ops.apply_materials_from_manifest(imported_meshes, enriched_manifest)
+    all_nodes_to_clean_up.extend(material_nodes_created)
    
     # --- 7. Ottimizzazione dei Mesh ---
     print("\n--- Fase 7: Ottimizzazione dei Mesh ---")
@@ -114,14 +115,13 @@ def execute_blender_pipeline():
     # Appica i modificatori alle mesh (freeze history)
     blender_ops.apply_all_modifiers(imported_meshes)
 
-    # Setup bake parameters
-    print("\n--- Phase: Bake Setup ---")
-    blender_ops.bake_setup(config.BLENDER_DEVICE)
-
     # --- 8. Baking delle Texture ---
     print("\n--- Fase 8: Baking delle Texture ---")
     bake_nodes_created = blender_ops.bake_textures(imported_meshes, config.TEXTURES_DIR, config.TEXTURE_SIZE, config.BLENDER_DEVICE)
     all_nodes_to_clean_up.extend(bake_nodes_created)
+
+    # Crea la mappa metalness per lo standard Adobe PBR
+    blender_ops.create_base_metalness_map(imported_meshes, config.TEXTURES_DIR, config.TEXTURE_SIZE)
 
     # Link baked texture back to the material (Metallic/Riughness Adobe PBR Standard)
     pbr_link_nodes_created = blender_ops.link_baked_textures(imported_meshes, config.TEXTURES_DIR)

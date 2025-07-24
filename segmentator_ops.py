@@ -43,14 +43,6 @@ def convert_dicom_to_nifti(dicom_folder, output_nifti_path):
         traceback.print_exc()
         return False
 
-
-def check_if_nii_has_volume(nii):
-    nii_img = nib.load(nii)
-    volume = nii_img.get_fdata()
-    if np.sum(volume) > 0:
-        return True
-    return False
-
 def check_segment_volume(segment_data):
     return np.count_nonzero(segment_data) > 0
 
@@ -186,9 +178,8 @@ def get_present_segment_ids(nii_segmented_file_path, segment_id_to_name_map):
         # Per ogni ID di segmento che ci aspettiamo (da TotalSegmentator)
         for seg_id in segment_id_to_name_map.keys():
             # Estrai solo i voxel che corrispondono a questo specifico seg_id
-            # np.where restituisce una tupla di array per ogni dimensione;
-            # np.count_nonzero direttamente conta gli elementi non zero (i voxel del segmento)
-            if np.count_nonzero(data == seg_id) > 0:
+            segment_mask = (data == seg_id)
+            if check_segment_volume(segment_mask):
                 present_segment_ids.add(seg_id)
                 # print(f"DEBUG: Segmento ID {seg_id} ('{segment_id_to_name_map.get(seg_id, 'Sconosciuto')}') presente nel volume.")
             # else:
@@ -336,374 +327,51 @@ def convert_nii_to_stl(volume, output_stl_path, spacing=(1.0, 1.0, 1.0)):
     mesh.save(output_stl_path)
     print(f"Mesh salvato in: {output_stl_path}")
 
-def OLDprocess_segmentations(nii_segmented_dir, output_mesh_dir, segment_mappings, shader_dictionary):
-    """
-    Processa i file NIfTI segmentati, li combina se necessario, e li converte in file STL.
-    Implementa una mappatura ibrida: usa le definizioni di segmentMappings.yaml
-    ma aggiunge dinamicamente i segmenti trovati che non sono mappati.
-    """
-    print("\n--- Fase: Processamento delle Segmentazioni NIfTI ---")
-    os.makedirs(output_mesh_dir, exist_ok=True)
-
-    # Carica le mappature dei segmenti predefinite
-    predefined_individual_exports = segment_mappings.get('individual_mesh_exports', {})
-    combined_exports = segment_mappings.get('combined_mesh_exports', {})
-    shader_dictionary = shader_dictionary.get('shader_dictionary', {})
-    fallback_categories = segment_mappings.get('fallback_categories', {})
-    
-    # Determina il default_shader e il default_color per i segmenti non mappati
-    default_shader_ref = "default_shader"
-    default_color = "#808080" # Grigio neutro
-    if default_shader_ref in shader_dictionary and "default_color" in shader_dictionary[default_shader_ref]:
-        default_color = shader_dictionary[default_shader_ref]["default_color"]
-
-    print(f"Directory base NIfTI segmentati: {nii_segmented_dir}")
-    
-    # Raccogli tutti i file NIfTI da tutte le sottodirectory dei task
-    all_nii_files_found = []
-    for task in config.TOTAL_SEGMENTATOR_TASKS:
-        task_nii_dir = os.path.join(nii_segmented_dir, task)
-        if os.path.exists(task_nii_dir):
-            nii_files_in_task_dir = [f for f in os.listdir(task_nii_dir) if f.endswith(".nii.gz")]
-            print(f"  Trovati {len(nii_files_in_task_dir)} file NIfTI nel task '{task}' in {task_nii_dir}.")
-            for nii_filename in nii_files_in_task_dir:
-                all_nii_files_found.append(os.path.join(task_nii_dir, nii_filename))
-        else:
-            print(f"  Attenzione: Directory del task '{task}' non trovata: {task_nii_dir}")
-
-    print(f"Totale file NIfTI raccolti da tutti i task: {len(all_nii_files_found)}")
-
-    # Costruisci la mappatura individuale runtime
-    runtime_individual_exports = {}
-    dynamically_added_segments = [] # Per tenere traccia dei segmenti aggiunti dinamicamente
-
-    for full_nii_path in all_nii_files_found:
-        nii_filename = os.path.basename(full_nii_path)
-        segment_name = os.path.splitext(nii_filename)[0] # Rimuovi .nii.gz
-        if segment_name.endswith(".nii"):
-            segment_name = os.path.splitext(segment_name)[0] # Rimuovi .nii se presente
-
-        if segment_name in predefined_individual_exports:
-            # Usa la definizione predefinita
-            runtime_individual_exports[segment_name] = predefined_individual_exports[segment_name]
-            runtime_individual_exports[segment_name]['_nii_path'] = full_nii_path # Salva il percorso reale del NIfTI
-            print(f"  Segmento '{segment_name}' trovato in mappatura predefinita.")
-        else:
-            # Crea una definizione dinamica
-            runtime_individual_exports[segment_name] = {
-                "display_name": f"Dynamic {segment_name}",
-                "category": "Dynamic_Segment", # Categoria generica per i nuovi segmenti
-                "shader_ref": default_shader_ref,
-                "color": default_color,
-                "export_as_individual_mesh": True, # Esporta come mesh individuale di default
-                '_nii_path': full_nii_path # Salva il percorso reale del NIfTI
-            }
-            dynamically_added_segments.append(segment_name) # Aggiungi alla lista dei dinamici
-            print(f"  Segmento '{segment_name}' non trovato in mappatura predefinita. Creata voce dinamica.")
-
-    # Dopo aver costruito runtime_individual_exports, suggerisci le mappature per i segmenti dinamici
-    if dynamically_added_segments:
-        print("\n--- Suggerimenti per la mappatura dei segmenti dinamici (da aggiungere a segmentMappings.yaml) ---")
-        suggested_mappings_yaml = suggest_segment_mappings_with_llm(
-            dynamically_added_segments,
-            shader_dictionary,
-            fallback_categories
-        )
-        print(suggested_mappings_yaml)
-        print("--- Fine suggerimenti ---")
-
-    # 1. Gestisci le esportazioni individuali
-    print("\n--- Esportazioni Individuali ---")
-    if not runtime_individual_exports:
-        print("Nessun segmento da esportare individualmente (runtime_individual_exports e' vuoto).")
-    for segment_name, details in runtime_individual_exports.items():
-        print(f"Verifica segmento individuale: {segment_name}, export_as_individual_mesh: {details.get('export_as_individual_mesh', False)}")
-        if details.get('export_as_individual_mesh', False):
-            nii_path = details['_nii_path'] # Usa il percorso NIfTI salvato
-            stl_path = os.path.join(output_mesh_dir, f"{segment_name}.stl")
-            print(f"  Cercando NIfTI: {nii_path}")
-            if os.path.exists(nii_path):
-                print(f"  Trovato NIfTI per {segment_name}. Conversione in STL...")
-                nii_img = nib.load(nii_path)
-                volume = nii_img.get_fdata()
-                convert_nii_to_stl(volume, stl_path)
-            else:
-                print(f"  Attenzione: File NIfTI non trovato per il segmento individuale '{segment_name}': {nii_path}")
-
-    # 2. Gestisci le esportazioni combinate
-    print("\n--- Esportazioni Combinate ---")
-    if not combined_exports:
-        print("Nessuna esportazione combinata definita in segmentMappings.yaml.")
-    for group_name, group_details in combined_exports.items():
-        print(f"Verifica gruppo combinato: {group_name}")
-        included_categories = group_details.get('included_categories', [])
-        combined_volume = None
-        
-        # Trova tutti i segmenti che appartengono alle categorie specificate
-        segments_in_group = []
-        # Ora itera su runtime_individual_exports per trovare i segmenti reali
-        for segment_name, details in runtime_individual_exports.items():
-            if details.get('category') in included_categories:
-                segments_in_group.append(segment_name)
-        
-        if not segments_in_group:
-            print(f"  Attenzione: Nessun segmento trovato per le categorie {included_categories} nel gruppo '{group_name}'.")
-            continue
-
-        print(f"  Segmenti inclusi nel gruppo '{group_name}': {', '.join(segments_in_group)}")
-
-        # Carica e combina i volumi NIfTI
-        for segment_name in segments_in_group:
-            # Usa il percorso NIfTI salvato in runtime_individual_exports
-            nii_path = runtime_individual_exports[segment_name]['_nii_path']
-            print(f"  Cercando NIfTI per combinazione: {nii_path}")
-            if os.path.exists(nii_path):
-                print(f"  Trovato NIfTI per {segment_name} nel gruppo {group_name}. Aggiunta al volume combinato...")
-                nii_img = nib.load(nii_path)
-                volume = nii_img.get_fdata()
-                if combined_volume is None:
-                    combined_volume = volume.astype(bool)
-                else:
-                    combined_volume = np.logical_or(combined_volume, volume.astype(bool))
-            else:
-                print(f"  Attenzione: File NIfTI non trovato per il segmento '{segment_name}' nel gruppo '{group_name}'.")
-
-        # Converte e salva il volume combinato
-        if combined_volume is not None:
-            stl_path = os.path.join(output_mesh_dir, f"{group_name}.stl")
-            print(f"  Volume combinato per {group_name} pronto. Conversione in STL...")
-            convert_nii_to_stl(combined_volume.astype(np.uint8), stl_path)
-        else:
-            print(f"  Nessun volume combinato generato per il gruppo '{group_name}'.")
-
-def extract_segments_from_multilabled_nii(nii_filepath, segments_lookup_table): # TO DO
-    """
-    Estrae i segmenti da un singolo file NIfTI multi-etichetta
-    e fornisce un dizionario ordinato dei segmenti presenti, utilizzando la lookup table fornita.
-    
-    Args:
-        nii_filepath (str): Il percorso del file NIfTI multi-etichetta.
-        segments_lookup_table (dict): Il dizionario di mappatura {label_id: segment_name}
-                                      ottenuto da map_to_binary.class_map.
-                                      
-    Returns:
-        OrderedDict: Un dizionario ordinato dove le chiavi sono i nomi dei segmenti
-                     e i valori sono dizionari contenenti 'label_id' (int) e 'voxel_count' (int).
-                     Ritorna un dizionario vuoto in caso di errore o se nessun segmento viene trovato.
-    """
-    print(f"\n--- Fase: Estrazione Segmenti da File NIfTI Multi-Etichetta ---")
-    print(f"DEBUG: Analisi del file: {nii_filepath}")
-    
-    if not os.path.exists(nii_filepath):
-        print(f"Errore: File NIfTI segmentato non trovato in '{nii_filepath}'. Impossibile estrarre segmenti.")
-        return OrderedDict()
-
-    if not segments_lookup_table:
-        print("Errore: La tabella di lookup dei segmenti non e' stata fornita o e' vuota. Impossibile associare etichette.")
-        return OrderedDict()
-
-    found_segments = OrderedDict()
-
-    try:
-        nii_img = nib.load(nii_filepath)
-        nii_data = nii_img.get_fdata()
-        
-        if nii_data.dtype != np.int32 and nii_data.dtype != np.int64:
-            nii_data = np.round(nii_data).astype(np.int32)
-
-        unique_labels_in_file = np.unique(nii_data)
-        segment_labels_to_check = [label for label in unique_labels_in_file if label != 0]
-
-        print(f"  Trovate {len(segment_labels_to_check)} etichette (non-sfondo) nel file NIfTI.")
-
-        # Iterate through the labels found in the NIfTI file
-        for label_id in sorted(segment_labels_to_check):
-            segment_mask = (nii_data == label_id)
-            
-            if check_segment_volume(segment_mask):
-                voxel_count = np.count_nonzero(segment_mask)
-                
-                # Get the segment name from the provided lookup table
-                segment_name = segments_lookup_table.get(label_id, f"unknown_segment_{label_id}")
-                
-                print(f"    Segmento '{segment_name}' (ID: {label_id}) trovato con {voxel_count} voxel.")
-                
-                found_segments[segment_name] = {
-                    'label_id': int(label_id),
-                    'voxel_count': int(voxel_count),
-                }
-            else:
-                segment_name = segments_lookup_table.get(label_id, f"unknown_segment_{label_id}")
-                print(f"    AVVISO: Segmento '{segment_name}' (ID: {label_id}) e' vuoto o ha volume insignificante. Skippato.")
-
-    except Exception as e:
-        print(f"ERRORE durante l'estrazione dei segmenti dal file NIfTI '{nii_filepath}': {e}")
-        import traceback
-        traceback.print_exc()
-        return OrderedDict()
-
-    print(f"--- Estrazione Segmenti Completata. Trovati {len(found_segments)} segmenti validi. ---")
-    return found_segments
-
 def populate_custom_details_for_segments(all_segment_data, segment_rules, combined_mesh_rules):
     """
-    Popola o aggiorna i parametri custom per i dati dei segmenti basandosi su regole fornite.
-    Si concentra sulla logica di raffinamento del match.
-
-    Args:
-        all_segment_data (dict): Un dizionario contenente i dati di tutti i segmenti.
-                                 Si aspetta il formato {nome_segmento: {..., 'custom_parameters': {}, 'snomed_details': {}}}.
-        segment_rules (dict): Un dizionario contenente le regole di mappatura per i singoli segmenti
-                              (tipicamente da segment_mappings_yaml.get('segment_rules', {})).
-        combined_mesh_rules (dict): Un dizionario contenente le regole per l'export di mesh combinate
-                                    (tipicamente da segment_mappings_yaml.get('combined_mesh_exports', {})).
-
-    Returns:
-        tuple: Una tupla contenente:
-            - dict: Il dizionario `all_segment_data` aggiornato con i custom parameters popolati.
-            - list: Una lista dei nomi dei segmenti che non sono stati mappati esplicitamente.
+    Popola i parametri custom per i dati dei segmenti usando una logica di matching intelligente.
+    Cerca corrispondenze sia per il nome esatto del segmento sia per varianti piu'generiche.
     """
-    print("\n--- Fase: Popolamento dei Custom Parameters per l'Export STL ---")
-
     unmapped_segments = []
+    print("\n--- Fase: Popolamento dei Custom Parameters (con Logica di Matching Migliorata) ---")
 
     for seg_name, segment_data in all_segment_data.items():
         custom_params = segment_data['custom_parameters']
-        rule = segment_rules.get(seg_name) # Cerca la regola per il segmento corrente
+        rule_found = False
 
-        if rule:
-            # Applica le regole trovate nel file di mappatura
-            custom_params['display_name'] = rule.get('display_name', seg_name.replace("_", " ").title())
-            custom_params['export'] = rule.get('export', True)
-            custom_params['biological_category'] = rule.get('biological_category', 'Other')
-        else:
-            # Gestisci i segmenti non mappati
+        # Genera nomi candidati, dal piu' specifico al piu'generico
+        candidate_names = utils.generate_snomed_candidate_names(seg_name)
+        
+        # Itera sui candidati per trovare una regola corrispondente
+        for candidate in candidate_names:
+            rule = segment_rules.get(candidate)
+            if rule:
+                print(f"  Match trovato per '{seg_name}' (via candidato '{candidate}') -> Categoria: {rule.get('biological_category', 'N/A')}")
+                custom_params['display_name'] = rule.get('display_name', seg_name.replace("_", " ").title())
+                custom_params['export'] = rule.get('export', True)
+                custom_params['biological_category'] = rule.get('biological_category', 'Other')
+                custom_params['color_override'] = rule.get('color_override', None)
+                rule_found = True
+                break  # Usa la prima regola trovata (la piu' specifica)
+
+        # Se nessuna regola e' stata trovata dopo aver provato tutti i candidati, applica il fallback
+        if not rule_found:
             unmapped_segments.append(seg_name)
-
-            # Tenta di usare il tipo SNOMED come display name, altrimenti formatta il nome del segmento
             snomed_type = segment_data['snomed_details'].get('type')
             custom_params['display_name'] = snomed_type if snomed_type else seg_name.replace("_", " ").title()
-
-            custom_params['export'] = True # Default per i non mappati
-
-            # Tenta di usare la categoria SNOMED, altrimenti usa 'Other'
+            custom_params['export'] = True  # Default per i non mappati
             snomed_category = segment_data['snomed_details'].get('category')
             custom_params['biological_category'] = snomed_category if snomed_category else "Other"
-
-            print(f"AVVISO: Segmento '{seg_name}' non trovato in 'segment_rules'. Applicati valori di default (Categoria: {custom_params['biological_category']}).")
+            print(f"  AVVISO: Nessuna regola trovata per '{seg_name}' o i suoi candidati. Applicati valori di default (Categoria Fallback: {custom_params['biological_category']}).")
 
     if unmapped_segments:
         print(f"\n--- Riepilogo Segmenti Non Mappati ({len(unmapped_segments)}) ---")
-        print("I seguenti segmenti non hanno una voce in 'segment_rules':")
+        print("I seguenti segmenti non hanno trovato una corrispondenza diretta o tramite candidati in 'segment_rules':")
         for seg_name in unmapped_segments:
             print(f"  - {seg_name} (Categoria fallback: {all_segment_data[seg_name]['custom_parameters']['biological_category']})")
-        print("Sono stati assegnati valori di default. Considera di aggiungerli al file di mappatura.")
+        print("Sono stati assegnati valori di default. Considera di aggiungere regole piu' generiche al file di mappatura se necessario.")
 
     return all_segment_data, unmapped_segments
-
-def get_segments_from_nii(nifti_path, segment_dictionary):
-    """
-    Carica un file NIfTI multi-label, identifica i segmenti presenti (ID e nome)
-    e calcola il loro volume in voxel.
-
-    Args:
-        nifti_path (str): Il percorso completo al file NIfTI multi-label (es. 'tota_mr.nii').
-        segment_dictionary (dict): Il dizionario che mappa gli ID numerici ai nomi dei segmenti
-                                        (ottenuto da class_map.get('[tasks]')).
-
-    Returns:
-        dict: Un dizionario dove la chiave e' il nome del segmento e il valore e' il volume in voxel.
-              Non include i segmenti con volume zero (il background con ID 0).
-    """
-    if not os.path.exists(nifti_path):
-        print(f"Errore: File NIfTI non trovato in '{nifti_path}'")
-        return {}
-
-    try:
-        # Carica l'immagine NIfTI
-        img = nib.load(nifti_path)
-        data = img.get_fdata() # Ottieni l'array NumPy dei dati dei voxel
-
-        # Trova gli ID unici presenti nell'immagine
-        # np.unique restituisce anche il conteggio, che e' il volume in voxel per ogni ID
-        unique_labels, counts = np.unique(data, return_counts=True)
-
-        present_segments_info = {}
-        for label_id, count in zip(unique_labels, counts):
-            # Ignoriamo il label 0, che tipicamente rappresenta lo sfondo (background)
-            if label_id == 0:
-                continue
-
-            # Mappa l'ID al nome del segmento
-            segment_name = segment_dictionary.get(label_id)
-
-            if segment_name:
-                present_segments_info[segment_name] = int(count)
-            else:
-                print(f"Avviso: ID {label_id} trovato nel NIfTI ma non presente in segment_dictionary. Probabile ID sconosciuto o nuovo.")
-
-        return present_segments_info
-
-    except nib.filebased.FileBasedImageError as e:
-        print(f"Errore nel caricamento del file NIfTI: {e}")
-        return {}
-    except Exception as e:
-        print(f"Errore inatteso durante l'analisi del NIfTI: {e}")
-        return {}
-
-def process_segments(nii_segmented_dir, output_mesh_dir, segment_mappings):
-    """
-    Processa i file NIfTI segmentati, li combina se necessario, e li converte in file STL.
-    """
-    print("\n--- Fase: Processamento delle Segmentazioni NIfTI ---")
-    os.makedirs(output_mesh_dir, exist_ok=True)
-
-    print(f"DEBUG: Directory base NIfTI segmentati: {nii_segmented_dir}")
-
-    # Raccogli tutti i file NIfTI direttamente dalla directory nii_segmented_dir
-    all_nii_files_found = []
-    
-    # List all .nii files directly in the specified directory
-    nii_files_in_dir = [f for f in os.listdir(nii_segmented_dir) if f.endswith(".nii")]
-    
-    print(f"  Trovati {len(nii_files_in_dir)} file NIfTI in '{nii_segmented_dir}'.")
-    
-    for nii_filename in nii_files_in_dir:
-        full_nii_path = os.path.join(nii_segmented_dir, nii_filename)
-        # Assuming you want to keep the volume check, if not, remove the if condition
-        if check_if_nii_has_volume(full_nii_path):
-            all_nii_files_found.append(full_nii_path)
-        else:
-            print(f"  Avviso: Il file NIfTI '{nii_filename}' sembra essere vuoto e verra' ignorato.")
-
-    print(f"Totale file NIfTI raccolti (con volume) per il processing: {len(all_nii_files_found)}")
-
-    # Cicla su tutti i file NIfTI validi che hai trovato
-    for nii_filepath in all_nii_files_found:
-        print(f"  Elaborazione del file NIfTI: {os.path.basename(nii_filepath)}")
-        
-        # Qui devi sapere quali segmenti (etichette) ti aspetti di trovare
-        # Potresti ottenerli da una configurazione, o scansionare i valori unici in nii_data
-        
-        # Esempio: se TotalSegmentator --ml salva un file con molte etichette
-        # Carica il file una volta
-        try:
-            nii_img = nib.load(nii_filepath)
-            nii_data = nii_img.get_fdata()
-            unique_labels = np.unique(nii_data) # Ottieni tutte le etichette presenti nel file
-            
-            # Filtra le etichette che non sono lo sfondo (es. 0) o valori che non vuoi processare
-            # Supponiamo che 0 sia lo sfondo
-            segment_labels_to_process = [label for label in unique_labels if label != 0]
-
-            for segment_label in segment_labels_to_process:
-                # Ora chiami la funzione che estrae e controlla ogni singolo segmento
-                extract_and_process_segment(nii_filepath, segment_label, output_mesh_dir, segment_mappings, shader_dictionary)
-                
-        except Exception as e:
-            print(f"Errore durante la lettura o l'elaborazione delle etichette da {nii_filepath}: {e}")
-
-    print("\n--- Fase: Processamento delle Segmentazioni NIfTI Completata ---")
 
 def get_total_segmentator_class_map(ts_install_dir, target_task):
     map_to_binary_path = os.path.join(ts_install_dir, "map_to_binary.py")
@@ -760,7 +428,8 @@ def run_total_segmentator(input_nifti_path, output_base_dir, tasks):
             check=True, # Lancia un CalledProcessError se il codice di uscita non e' 0
             capture_output=True,
             text=True,
-            cwd=config.TOTAL_SEGMENTATOR_INSTALL_DIR
+            cwd=config.TOTAL_SEGMENTATOR_INSTALL_DIR,
+            #encoding=config.TOTAL_SEGMENTATOR_SNOMED_ENCODING
         )
         print(f"Segmentazione completata. Output salvato in '{output_base_dir}'.\n")
         print("DEBUG: --- TotalSegmentator STDOUT ---")

@@ -2,17 +2,17 @@ individual_mesh_export:
   spleen:
     display_name: "Spleen"
     export: True
-    biological_category: "Organ"
+    biological_category: "Parenchima"
 
   kidney_right:
     display_name: "Right Kidney"
     export: True
-    biological_category: "Organ"
+    biological_category: "Parenchima"
 
   kidney_left:
     display_name: "Left Kidney"
     export: True
-    biological_category: "Organ"
+    biological_category: "Parenchima"
 
   gallbladder:
     display_name: "Gallbladder"
@@ -22,17 +22,17 @@ individual_mesh_export:
   liver:
     display_name: "Liver"
     export: True
-    biological_category: "Organ"
+    biological_category: "Parenchima"
 
   stomach:
     display_name: "Stomach"
     export: True
-    biological_category: "Organ"
+    biological_category: "Digestive"
 
   pancreas:
     display_name: "Pancreas"
     export: True
-    biological_category: "Organ"
+    biological_category: "Parenchima"
 
   adrenal_gland_right:
     display_name: "Right Adrenal Gland"
@@ -43,6 +43,11 @@ individual_mesh_export:
     display_name: "Left Adrenal Gland"
     export: True
     biological_category: "Organ"
+
+  lung:
+    display_name: "Lung"
+    export: True
+    biological_category: "Lung"
 
   lung_left:
     display_name: "Left Lung"
@@ -57,22 +62,22 @@ individual_mesh_export:
   esophagus:
     display_name: "Esophagus"
     export: True
-    biological_category: "Organ"
+    biological_category: "Digestive"
 
   small_bowel:
     display_name: "Small Bowel"
     export: True
-    biological_category: "Organ"
+    biological_category: "Digestive"
 
   duodenum:
     display_name: "Duodenum"
     export: True
-    biological_category: "Organ"
+    biological_category: "Digestive"
 
   colon:
     display_name: "Colon"
     export: True
-    biological_category: "Organ"
+    biological_category: "Digestive"
 
   urinary_bladder:
     display_name: "Urinary Bladder"
@@ -102,7 +107,7 @@ individual_mesh_export:
   spinal_cord:
     display_name: "Spinal Cord"
     export: True
-    biological_category:
+    biological_category: "Nerve"
 
   heart:
     display_name: "Heart"
@@ -112,37 +117,37 @@ individual_mesh_export:
   aorta:
     display_name: "Aorta"
     export: True
-    biological_category: "Vessel"
+    biological_category: "Artery"
 
   inferior_vena_cava:
     display_name: "Inferior Vena Cava"
     export: True
-    biological_category: "Vessel"
+    biological_category: "Vein"
 
   portal_vein_and_splenic_vein:
     display_name: "Portal and Splenic Vein"
     export: True
-    biological_category: "Vessel"
+    biological_category: "Vein"
 
   iliac_artery_left:
     display_name: "Left Iliac Artery"
     export: True
-    biological_category: "Vessel"
+    biological_category: "Artery"
 
   iliac_artery_right:
     display_name: "Right Iliac Artery"
     export: True
-    biological_category: "Vessel"
+    biological_category: "Artery"
 
   iliac_vena_left:
     display_name: "Left Iliac Vena"
     export: True
-    biological_category: "Vessel"
+    biological_category: "Vein"
 
   iliac_vena_right:
     display_name: "Right Iliac Vena"
     export: True
-    biological_category: "Vessel"
+    biological_category: "Vein"
 
   humerus_left:
     display_name: "Left Humerus"
@@ -248,6 +253,76 @@ individual_mesh_export:
     display_name: "Brain"
     export: True
     biological_category: "Brain"
+    
+  rib:
+    display_name: "Rib"
+    export: "True"
+    biological_category: "Bone"
+  
+  sternum:
+    display_name: "Sternum"
+    export: "True"
+    biological_category: "Bone"
+    
+  skull:
+    display_name: "Skull"
+    export: "True"
+    biological_category: "Bone"
+  
+  trachea:
+    display_name: "Trachea"
+    export: "True"
+    biological_category: "Digestive"
+    
+  thyroid_gland:
+    display_name: "Thyroid Gland"
+    export: "True"
+    biological_category: "Organ"
+    
+  kidney_cyst:
+    display_name: "Kidney Cyst"
+    export: "True"
+    biological_category: "Cyst"
+    
+  atrial_appendage_left:
+    display_name: "Arterial appendage Left"
+    export: "True"
+    biological_category: "Artery"
+  
+  pulmonary_vein:
+    display_name: "Pulmonary Vein"
+    export: "True"
+    biological_category: "Vein"
+    
+  brachiocephalic_trunk:
+    display_name: "Brachiocephalic Trunk"
+    export: "True"
+    biological_category: "Artery"
+    
+  subclavian_artery:
+    display_name: "Subclavian Artery"
+    export: "True"
+    biological_category: "Artery"
+  
+  common_carotid_artery:
+    display_name: "Carotid Artery"
+    export: "True"
+    biological_category: "Artery"
+  
+  brachiocephalic_vein:
+    display_name: "Brachiocephalic Vein"
+    export: "True"
+    biological_category: "Vein"
+  
+  superior_vena_cava:
+    display_name: "Superior Vena Cava"
+    export: "True"
+    biological_category: "Vein"
+    
+  costal_cartilages:
+    display_name: "Costal Cartilages"
+    export: "True"
+    biological_category: "Cartilage"
 
 combined_mesh_export:
   combined_mesh_exports_bones: {display_name: "All Bones", biological_category: "Bone", export: True}
@@ -263,7 +338,7 @@ biological_categories: # QUI E' SOLO PER REF
   #
   # Casi specifici
   Brain: "brain_shader"
-  Lungs: "lungs_shader"
+  Lung: "lung_shader"
   Spleen: "spleen_shader"
   Digestive: "guts_shader" # anche per organi digestivi generici
   # Casi generici

@@ -65,26 +65,14 @@ def number_to_ordinal(num_str: str) -> str:
 
 def generate_snomed_candidate_names(original_seg_name: str) -> list[str]:
     """
-    Genera una lista ordinata di nomi candidati per il lookup SNOMED,
-    applicando regole di normalizzazione per matchare sia lo stile 'Structure'
-    (lowercase, underscore) che lo stile 'CodeMeaning' (Capitalized, space, prefix/ordinal).
+    Genera una lista ordinata di nomi candidati per il lookup, applicando
+    regole di normalizzazione e stripping iterativo dei suffissi.
     """
-    candidates = []
-
-    # --- Candidati in stile 'Structure' (lowercase, underscore) ---
-    # 1. Nome originale (massima priorit� per match diretto su Structure)
-    candidates.append(original_seg_name)
-
-    # 2. Forma singolare del nome originale (se diversa)
-    singular_original = plural_to_singular(original_seg_name)
-    if singular_original != original_seg_name and singular_original not in candidates:
-        candidates.append(singular_original)
-
-    # 3. Nomi strippati iterativamente (solo qualificatori) per match su Structure
-    # Lista di qualificatori da strippare (posizionali, numerici, di grado)
-
+    candidates = [original_seg_name]
+    
     qualifier_suffixes_to_strip = [
         '_left', '_right',
+        '_upper','_middle','_lower',
         '_L5', '_L4', '_L3', '_L2', '_L1',
         '_T12', '_T11', '_T10', '_T9', '_T8', '_T7', '_T6', '_T5', '_T4', '_T3', '_T2', '_T1',
         '_C7', '_C6', '_C5', '_C4', '_C3', '_C2', '_C1',
@@ -92,44 +80,31 @@ def generate_snomed_candidate_names(original_seg_name: str) -> list[str]:
         '_1','_2','_3','_4','_5','_6','_7','_8','_9','_10','_11','_12',
         '_lumbar', '_thoracic', '_cervical',
         '_maximus', '_medius', '_minimus',
-        '_body' # per 'body_trunc', 'body_extremities' - qualificatori di 'body'
+        '_body', '_lobe',
     ]
 
-    current_name_for_stripping = original_seg_name
-    for suffix in qualifier_suffixes_to_strip:
-        if current_name_for_stripping.endswith(suffix):
-            stripped_name = current_name_for_stripping.replace(suffix, '')
-            if stripped_name and stripped_name != current_name_for_stripping and stripped_name not in candidates:
-                candidates.append(stripped_name)
-                # Aggiungi anche la forma singolare di questo nome strippato
-                singular_stripped = plural_to_singular(stripped_name)
-                if singular_stripped != stripped_name and singular_stripped not in candidates:
-                    candidates.append(singular_stripped)
-            current_name_for_stripping = stripped_name # Continua a strippare dal nome appena ottenuto
+    current_name = original_seg_name
+    while True:
+        suffix_found_this_iteration = False
+        for suffix in qualifier_suffixes_to_strip:
+            if current_name.endswith(suffix):
+                current_name = current_name[:-len(suffix)]
+                if current_name and current_name not in candidates:
+                    candidates.append(current_name)
+                    singular_stripped = plural_to_singular(current_name)
+                    if singular_stripped != current_name and singular_stripped not in candidates:
+                        candidates.append(singular_stripped)
+                suffix_found_this_iteration = True
+                break  # Riavvia la ricerca con il nome appena accorciato
 
-    # --- Candidati in stile 'CodeMeaning' (Capitalized, space, prefix/ordinal) ---
+        if not suffix_found_this_iteration:
+            break  # Esce dal ciclo while se non sono stati trovati altri suffissi
 
-    # Regex per riconoscere pattern specifici
-    vertebra_pattern = re.compile(r"^(vertebrae|vertebra)_([LTCMS][0-9]+)$")
-    rib_pattern = re.compile(r"^(ribs|rib)_(left|right)_([0-9]+)$")
-    # Pattern per organ_side come 'adrenal_gland_left'
-    organ_side_pattern = re.compile(r"^([a-z_]+)_(left|right)$")
-    # Pattern per lobe_side come 'lung_lower_lobe_left'
-    lobe_side_pattern = re.compile(r"^(lung|lobe|segment)_(lower_lobe|upper_lobe|middle_lobe|medial_lobe|lateral_lobe)_(left|right)$")
-    # Pattern per nomi composti come 'iliac_artery' -> 'Iliac Artery' o 'Common Iliac Artery'
-    # Per semplicit�, inizialmente convertiamo solo underscore a spazio e capitalizziamo.
-    # Pattern per nomi tipo 'vessels_portal' -> 'Portal vessels' (es. per il nome in Structure, non nell'esempio fornito)
-    compound_pattern = re.compile(r"^([a-z_]+)_([a-z_]+)$") # 'word1_word2'
-
-    # Caso Nomi Composti Generici: es. 'iliac_artery' -> 'Iliac Artery', 'Common Iliac Artery'
-    # Per questo, convertiamo semplicemente underscore in spazi e capitalizziamo ogni parola.
-    # Questo copre anche casi come 'vertebrae_lumbar' che potrebbe non essere catturato dai pattern specifici sopra
-    # se non � una vertebra numerata.
+    # --- Gestione candidati in stile 'CodeMeaning' e casi composti ---
     formatted_generic = ' '.join([plural_to_singular(p).capitalize() for p in original_seg_name.split('_')])
     if formatted_generic not in candidates:
         candidates.append(formatted_generic)
 
-    # 5. Gestione nomi composti con "_and_" (assicura che le singole parti siano candidate)
     if '_and_' in original_seg_name:
         parts_and = original_seg_name.split('_and_')
         for p in parts_and:
@@ -139,13 +114,11 @@ def generate_snomed_candidate_names(original_seg_name: str) -> list[str]:
             if singular_p != p and singular_p not in candidates:
                 candidates.append(singular_p)
             
-            # Aggiungi anche la versione CodeMeaning per le singole parti
             formatted_p = ' '.join([plural_to_singular(word).capitalize() for word in p.split('_')])
             if formatted_p not in candidates:
                 candidates.append(formatted_p)
 
-
-    # Rimuovi duplicati mantenendo l'ordine (importante per la priorita' di lookup)
+    # Rimuovi duplicati mantenendo l'ordine
     final_candidates = []
     seen = set()
     for candidate in candidates:
@@ -210,7 +183,7 @@ def load_csv(csv_path, key_column, encoding):
         print(f"Generic error loading '{csv_path}': {e}")
         return data_map
 
-def hex_to_rgb(hex_color_str):
+def OLD_hex_to_rgb(hex_color_str):
     """
     Converts a hexadecimal string (e.g., "FF0000") to an RGB tuple (0-1).
     Returns (0.0, 0.0, 0.0) for invalid input.

@@ -14,7 +14,7 @@ PROJECT_SESSION_ID = "CASE_001_SCAN_01"
 
 # Task/s di segmentazione da eseguire (es. ['total'], ['lung_vessels'], ['tissue_types'], etc.)
 # La libreria TotalSegmentator verra' chiamata direttamente per ogni task nella lista.
-TOTAL_SEGMENTATOR_TASKS = ['total_mr']
+TOTAL_SEGMENTATOR_TASKS = ['total']
 
 # Device da usare per la segmentazione ('gpu' o 'cpu').
 TOTAL_SEGMENTATOR_DEVICE = "gpu"
@@ -36,7 +36,7 @@ TEXTURE_SIZE = 512
 # Device da usare per il bake ('gpu' o 'cpu').
 BLENDER_DEVICE="gpu"
 
-# Fattore di scala per convertire le unità del file STL (tipicamente mm) nelle unità di Blender (m).
+# Fattore di scala per convertire le unita' del file STL (tipicamente mm) nelle unita' di Blender (m).
 # Default: 0.001 (per conversione da millimetri a metri).
 # Per pollici a metri, usare 0.0254.
 WORLD_SCALE_FACTOR = 0.001
@@ -100,10 +100,3 @@ TOTAL_SEGMENTATOR_SCRIPT_PATH = os.path.join(TOTAL_SEGMENTATOR_INSTALL_DIR, "bin
 TOTAL_SEGMENTATOR_SNOMED_MAPPING = os.path.join(TOTAL_SEGMENTATOR_INSTALL_DIR, "resources", "totalsegmentator_snomed_mapping.csv")
 TOTAL_SEGMENTATOR_SNOMED_KEY = 'Structure'
 TOTAL_SEGMENTATOR_SNOMED_ENCODING = 'utf-8'
-
-
-
-
-
-
-

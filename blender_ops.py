@@ -1,50 +1,40 @@
 # blender_ops.py
-# from tkinter import NO
+
 import bpy
 import os
 import numpy as np
 import mathutils
 
 # Import config module to access global project settings
-import config 
+import config
+import utils
 
 # --- Utility Functions ---
 
 def setup_blender_environment():
-    """Sets up the Blender environment, including render engine and device."""
+    """
+    Configura l'ambiente Blender, attivando la GPU (CUDA) se specificato nel config.
+    """
     print("\n--- Setting up Blender Environment ---")
     bpy.context.scene.render.engine = 'CYCLES'
-    
-    # Determine compute device type based on config.BLENDER_DEVICE
-    # compute_device_type for preferences is an enum: 'NONE', 'CUDA', 'OPTIX', 'HIP', 'ONEAPI'
-    # It does NOT accept 'CPU' directly. 'NONE' means no specific compute device, allowing CPU fallback.
-    
-    preferred_compute_type = 'NONE' # Default to NONE (CPU fallback)
-    
-    if config.BLENDER_DEVICE.upper() == "GPU":
-        # Check for CUDA
-        if "CUDA" in bpy.context.preferences.addons["cycles"].preferences.compute_device_type:
-            preferred_compute_type = "CUDA"
-        # Check for OpenCL if CUDA is not available
-        elif "OPENCL" in bpy.context.preferences.addons["cycles"].preferences.compute_device_type:
-            preferred_compute_type = "OPENCL"
-        else:
-            print("  Warning: No CUDA or OpenCL devices found. Falling back to CPU for Cycles compute.")
-            preferred_compute_type = "NONE" # Explicitly set to NONE for CPU fallback
-    elif config.BLENDER_DEVICE.upper() == "CPU":
-        preferred_compute_type = "NONE" # For CPU preference, set compute type to NONE
-        
-    bpy.context.preferences.addons["cycles"].preferences.compute_device_type = preferred_compute_type
-    
-    # Set the scene device based on whether a GPU compute type was successfully set
-    bpy.context.scene.cycles.device = 'GPU' if preferred_compute_type != "NONE" else 'CPU'
+    prefs = bpy.context.preferences.addons["cycles"].preferences
 
-    # Enable all available devices for the chosen compute type
-    bpy.context.preferences.addons["cycles"].preferences.get_devices()
-    print(f"  Compute Device Type: {bpy.context.preferences.addons['cycles'].preferences.compute_device_type}")
-    for d in bpy.context.preferences.addons["cycles"].preferences.devices:
-        d["use"] = 1
-        print(f"  Device: {d['name']}, Enabled: {d['use']}")
+    if config.BLENDER_DEVICE.upper() == 'GPU':
+        # Forza l'uso di CUDA, dato che l'ambiente e' ottimizzato per NVIDIA.
+        prefs.compute_device_type = 'CUDA'
+        bpy.context.scene.cycles.device = 'GPU'
+        
+        # Abilita tutti i dispositivi CUDA disponibili
+        prefs.get_devices()
+        for device in prefs.devices:
+            if device.type == 'CUDA':
+                device.use = True
+                print(f"  Enabled CUDA device: {device.name}")
+    else:
+        # Ripiega sulla CPU se non e' richiesta la GPU
+        prefs.compute_device_type = 'NONE'
+        bpy.context.scene.cycles.device = 'CPU'
+
     print(f"  Blender render engine set to CYCLES and device to {bpy.context.scene.cycles.device}.")
 
 def clear_blender_scene():
@@ -59,7 +49,6 @@ def clear_blender_scene():
 def get_all_mesh_objects():
     """Returns a list of all mesh objects in the current Blender scene."""
     return [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
-
 
 # --- Import and Export Functions ---
 
@@ -109,7 +98,7 @@ def export_glb(filepath, root_object_to_export):
     print(f"  Exporting {selected_count} objects to GLB: {filepath}")
     bpy.ops.export_scene.gltf(filepath=filepath, export_extras=True, use_selection=True) # Always use selection if root is provided
     print(f"Exported GLB: {filepath}")
-    bpy.ops.object.select_all(action='DESELECT') # Deselect all after export
+    bpy.ops.object.select_all(action='DESELECT')
 
 def export_fbx(filepath, objects_to_export):
     """
@@ -201,7 +190,6 @@ def import_meshes_into_blender_scene(input_folder_path):
         print(f"  No .stl meshes found in '{input_folder_path}'.")
     return imported_objects
 
-
 def apply_world_scale(mesh_objects, scale_factor):
     """
     Applies a uniform scale factor to all specified mesh objects and
@@ -217,22 +205,22 @@ def apply_world_scale(mesh_objects, scale_factor):
         if obj.type == 'MESH':
             # Set the scale
             obj.scale = (scale_factor, scale_factor, scale_factor)
-            print(f"  Set scale of '{obj.name}' to {obj.scale}.")
+            # print(f"  Set scale of '{obj.name}' to {obj.scale}.")
 
-    # Apply the scale to all mesh objects at once
+    # Select all mesh
     bpy.ops.object.select_all(action='DESELECT')
     for obj in mesh_objects:
         if obj.type == 'MESH':
             obj.select_set(True)
     
+    # Apply the scale to all mesh objects at once
     if bpy.context.selected_objects:
         bpy.context.view_layer.objects.active = bpy.context.selected_objects[0]
         bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-        print("  Applied scale transformation to all selected mesh objects.")
+        print(f"  Applied scale transformation to {len(bpy.context.selected_objects)} selected mesh objects.")
     
     bpy.ops.object.select_all(action='DESELECT')
     bpy.context.view_layer.update()
-
 
 # --- Cleaning Functions ---
 
@@ -250,7 +238,7 @@ def merge_vertices_by_distance(mesh_objects, distance):
             bpy.ops.mesh.remove_doubles(threshold=distance)
             bpy.ops.object.mode_set(mode='OBJECT')
             obj.select_set(False)
-            print(f"  Merge vertices on '{obj.name}' completed.")
+            # print(f"  Merge vertices on '{obj.name}' completed.")
     bpy.context.view_layer.update()
 
 def fix_normal_orientation(mesh_objects):
@@ -267,7 +255,7 @@ def fix_normal_orientation(mesh_objects):
             bpy.ops.mesh.normals_make_consistent(inside=False)
             bpy.ops.object.mode_set(mode='OBJECT')
             obj.select_set(False)
-            print(f"  Normals orientation of '{obj.name}' corrected.")
+            # print(f"  Normals orientation of '{obj.name}' corrected.")
     bpy.context.view_layer.update()
 
 def delete_small_features(mesh_objects):
@@ -281,7 +269,7 @@ def delete_small_features(mesh_objects):
             bpy.ops.mesh.dissolve_degenerate()
             bpy.ops.object.mode_set(mode='OBJECT')
             obj.select_set(False)
-            print(f"  Small features of '{obj.name}' deleted.")
+            # print(f"  Small features of '{obj.name}' deleted.")
     bpy.context.view_layer.update()
 
 def decimate_mesh_objects(mesh_objects, max_faces_limit):
@@ -341,7 +329,7 @@ def apply_smoothing_normals(mesh_objects, method='WEIGHTED', average_type='CORNE
 
             bpy.ops.object.modifier_apply(modifier=mod.name)
             bpy.ops.object.shade_smooth()
-            print(f"  Applied Weighted Normals and Shade Smooth to '{obj.name}'.")
+            #print(f"  Applied Weighted Normals and Shade Smooth to '{obj.name}'.")
 
         elif method == 'AVERAGE':
             bpy.ops.object.mode_set(mode='EDIT')
@@ -349,7 +337,7 @@ def apply_smoothing_normals(mesh_objects, method='WEIGHTED', average_type='CORNE
             bpy.ops.mesh.average_normals(average_type=average_type)
             bpy.ops.object.mode_set(mode='OBJECT')
             bpy.ops.object.shade_smooth()
-            print(f"  Normals of '{obj.name}' averaged ({average_type}) and Shade Smooth applied.")
+            #print(f"  Normals of '{obj.name}' averaged ({average_type}) and Shade Smooth applied.")
         else:
             print(f"  Smoothing method '{method}' not recognized. Skipping for '{obj.name}'.")
         
@@ -443,7 +431,7 @@ def create_single_scene_root(mesh_objects, root_name_base):
 
             obj.parent = root_object
             obj.matrix_parent_inverse = root_object.matrix_world.inverted()
-            print(f"  '{obj.name}' parented to '{root_object.name}'.")
+            # print(f"  '{obj.name}' parented to '{root_object.name}'.")
 
     # 5. Move the Root (and all its children) to the world origin
     root_object.location = config.ROOT_WORLD_POSITION
@@ -463,30 +451,34 @@ def enrich_segment_data_with_materials(segments_manifest, blender_shader_registr
     print("\n--- Enriching Manifest with Material Data ---")
     shader_ref_map = blender_shader_registry.get('shader_ref', {})
     category_shader_map = blender_shader_registry.get('biological_categories', {})
-    snomed_type_shader_map = blender_shader_registry.get('snomed_types', {})
     default_shader_ref = "default_shader"
 
     for seg_name, seg_data in segments_manifest.items():
-        shader_ref_to_use = None
-        category = seg_data.get('custom_parameters', {}).get('biological_category', 'Other')
+        shader_ref_to_use = None # Resettato per ogni segmento
+        biological_category_type = seg_data.get('custom_parameters', {}).get('biological_category')
         snomed_type = seg_data.get('snomed_details', {}).get('type')
 
         # 1. Direct Match Logic: Check for a shader named after the segment itself
         potential_direct_ref = f"{seg_name}_shader"
         if potential_direct_ref in shader_ref_map:
             shader_ref_to_use = potential_direct_ref
-            print(f"DEBUG:  Segment '{seg_name}' -> Direct Match: '{shader_ref_to_use}'.")
+            print(f"DEBUG: Segment '{seg_name}' -> Direct Match: '{shader_ref_to_use}'.")
         
         # 2. SNOMED Type Match Logic (Medium-High Priority)
-        elif snomed_type and snomed_type in snomed_type_shader_map:
-            shader_ref_to_use = snomed_type_shader_map[snomed_type]
+        if shader_ref_to_use is None and snomed_type:
+            potential_snomed_match = f"{snomed_type.lower()}_shader"
+            if potential_snomed_match in shader_ref_map:
+                shader_ref_to_use = potential_snomed_match
+                print(f"DEBUG: Segment '{seg_name}' -> SNOMED Type Match (derived): '{potential_snomed_match}'.")
 
         # 3. Biological Category Match Logic
-        elif category and category in category_shader_map:
-            shader_ref_to_use = category_shader_map[category]
-
+        if shader_ref_to_use is None and biological_category_type:
+            if biological_category_type in category_shader_map:
+                shader_ref_to_use = category_shader_map[biological_category_type]
+                print(f"DEBUG: Segment '{seg_name}' -> Biological Category Type Match: '{shader_ref_to_use}'.")
+            
         # 4. Fallback to Default
-        else:
+        if shader_ref_to_use is None:
             shader_ref_to_use = default_shader_ref
 
         # Get material details from the chosen shader_ref
@@ -494,8 +486,10 @@ def enrich_segment_data_with_materials(segments_manifest, blender_shader_registr
         seg_data['custom_parameters']['shader_ref'] = shader_ref_to_use
         seg_data['custom_parameters']['blend_file'] = shader_details.get('blend_file')
         seg_data['custom_parameters']['blend_material'] = shader_details.get('blend_material')
+        seg_data['custom_parameters']['color_override'] = shader_details.get('color_override')
         
-        print(f"DEBUG:  Segment '{seg_name}' -> Category '{category}' -> Shader Ref '{shader_ref_to_use}' -> Material '{shader_details.get('blend_material')}'.")
+        # Aggiornato il print per maggiore chiarezza sul "final shader ref"
+        print(f"DEBUG: Segment '{seg_name}' -> Shader Ref '{shader_ref_to_use}' -> Material '{shader_details.get('blend_material')}' -> Color Override '{shader_details.get('color_override')}'.")
 
     return segments_manifest
 
@@ -506,6 +500,7 @@ def apply_materials_from_manifest(imported_meshes, enriched_manifest):
     """
     print("\n--- Applying Materials from Enriched Manifest ---")
     materials_to_append = {}  # {mat_name: blend_file_path}
+    created_override_nodes = [] # Initialize list to track created override nodes
 
     # First, determine which object corresponds to which entry in the manifest
     # and gather all unique materials that need to be appended.
@@ -558,8 +553,67 @@ def apply_materials_from_manifest(imported_meshes, enriched_manifest):
                 else:
                     obj.data.materials.append(new_mat)
                 print(f"  Applied unique material '{new_mat.name}' (copy of '{mat_name}') to '{obj.name}'.")
+
+                # --- Apply Color Override if specified ---
+                color_override_hex = mat_details.get('color_override')
+                if color_override_hex:
+                    mix_node_name = apply_color_override_node(obj, new_mat, color_override_hex)
+                    if mix_node_name:
+                        created_override_nodes.append(mix_node_name)
+                # --- End Color Override ---
             else:
                 print(f"  ERROR: Base material '{mat_name}' not found after append for object '{obj.name}'.")
+    return created_override_nodes
+
+def apply_color_override_node(obj, material, color_override_hex):
+    """
+    Applies a color override to the material of an object by adding a Mix node.
+    """
+    print(f"  Applying color override '{color_override_hex}' to '{obj.name}'.")
+    nodes = material.node_tree.nodes
+    links = material.node_tree.links
+    
+    principled_bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    if principled_bsdf and 'Base Color' in principled_bsdf.inputs:
+        base_color_input = principled_bsdf.inputs['Base Color']
+        
+        if base_color_input.links:
+            original_from_node = base_color_input.links[0].from_node
+            original_from_socket = base_color_input.links[0].from_socket
+
+            # Crea il NUOVO nodo Mix (ShaderNodeMix)
+            mix_node = nodes.new('ShaderNodeMix')
+            mix_node.name = f"{obj.name}_ColorOverrideMix"
+            mix_node.label = "Color Override Mix"
+            mix_node.data_type = 'RGBA' # Fondamentale: specifica che lavora con colori
+            mix_node.blend_type = 'MULTIPLY'
+            mix_node.inputs['Factor'].default_value = 1.0
+            
+            mix_node.location = original_from_node.location + mathutils.Vector((300, 0))
+            
+            override_rgb = utils.hex_to_rgb(color_override_hex)
+            print(f"    DEBUG: override_rgb (from hex_to_rgb): {override_rgb}")
+
+            
+            # LINK 'A'
+            links.new(original_from_socket, mix_node.inputs['A'])
+                                
+            # INPUT 'B'
+            mix_node.inputs['B'].default_value = (*override_rgb, 1.0)
+            
+            for link in list(base_color_input.links):
+                links.remove(link)
+            # OUTPUT 'Result'
+            links.new(mix_node.outputs['Result'], base_color_input)
+            print(f"    Applied Mix node override for '{obj.name}'.")
+            return mix_node.name
+        else:
+            print(f"    Applying color override directly to Base Color for '{obj.name}' (no existing link).")
+            principled_bsdf.inputs['Base Color'].default_value = (*utils.hex_to_rgb(color_override_hex), 1.0)
+            return None
+    else:
+        print(f"    WARNING: Principled BSDF or 'Base Color' input not found for '{obj.name}'. Cannot apply color override.")
+        return None
 
 # --- Bake Functions ---
 
@@ -596,26 +650,6 @@ def uv_map(mesh_objects, texture_size):
         obj.select_set(False)
         print(f"  UV map for '{obj.name}' created/updated with Smart UV Project.")
     bpy.context.view_layer.update()
-
-def bake_setup(device):
-
-    """Configures Cycles rendering engine for baking."""
-    print("\n--- Phase: Bake Setup ---")
-    # Configurazione Cycles for baking
-    if bpy.context.preferences.addons["cycles"].preferences.compute_device_type != device:
-        bpy.context.preferences.addons["cycles"].preferences.compute_device_type = "CUDA" # Default to CUDA, can be overridden by 'device' param if needed
-    bpy.context.scene.cycles.device = device
-    
-    # Enable all available devices for the chosen compute type
-    bpy.context.preferences.addons["cycles"].preferences.get_devices()
-    print(f"  Compute Device Type: {bpy.context.preferences.addons['cycles'].preferences.compute_device_type}")
-    for d in bpy.context.preferences.addons["cycles"].preferences.devices:
-        d["use"] = 1
-        print(f"  Device: {d['name']}, Enabled: {d['use']}")
-
-    bpy.context.scene.render.engine = 'CYCLES'
-    bpy.context.scene.cycles.device = device
-    print(f"  Cycles render engine and {device} device set for baking.")
 
 def bake_channel(mesh_object, channel_type, textures_dir, texture_size, color_space):
     """Generic function to bake a specific channel (Color, Normal, Roughness, etc.)."""
@@ -858,6 +892,64 @@ def link_baked_textures(imported_meshes, textures_dir):
     bpy.context.view_layer.update()
     return nodes_created_by_linking # Return any new nodes created by this function
 
+def create_base_metalness_map(mesh_objects, textures_dir, texture_size):
+    """
+    Creates a base Metalness map (metallic.png) for PBR Adobe workflow
+    from the green channel of the baked Roughness map.
+    The green channel of the roughness map is replicated across R, G, B channels.
+    """
+    print("\n--- Phase: Creating Base Metalness Map (for PBR Adobe workflow) ---")
+    for obj in mesh_objects:
+        obj_name = obj.name
+        roughness_path = os.path.join(textures_dir, f"{obj_name}_roughness.png")
+        metallic_output_path = os.path.join(textures_dir, f"{obj_name}_metallic.png")
+
+        if not os.path.exists(roughness_path):
+            print(f"  Roughness texture missing for {obj_name} at {roughness_path}. Skipping base metalness creation.")
+            continue
+
+        metallic_name = f"{obj_name}_metallic"
+        if metallic_name in bpy.data.images:
+            bpy.data.images.remove(bpy.data.images[metallic_name], do_unlink=True)
+            print(f"  Removed existing base metalness image '{metallic_name}'.")
+
+        roughness_img = bpy.data.images.load(roughness_path)
+        
+        metallic_img = bpy.data.images.new(
+            name=metallic_name,
+            width=texture_size,
+            height=texture_size,
+            alpha=False # Metalness is typically RGB, no alpha
+        )
+        metallic_img.colorspace_settings.name = 'Non-Color' # Important for data
+
+        print(f"  Processing base metalness texture for {obj_name}...")
+        
+        if len(roughness_img.pixels) != texture_size * texture_size * 4:
+            print(f"  Error: Unexpected pixel count for roughness image {obj_name}. Expected {texture_size * texture_size * 4}, got {len(roughness_img.pixels)}. Cannot create base metalness map.")
+            bpy.data.images.remove(roughness_img) # Clean up
+            continue
+
+        #Initialize with 4 channels (RGBA) and explicitly set alpha to 1.0
+        base_metalness_pixels = np.zeros((texture_size, texture_size, 4)) 
+        pixels_from_roughness = np.array(list(roughness_img.pixels)).reshape((texture_size, texture_size, 4)) # Reshape to (H, W, RGBA)
+        
+        # Replicate green channel of roughness to R, G, B of metalness
+        base_metalness_pixels[:,:,0] = pixels_from_roughness[:,:,1] # Red from Roughness Green
+        base_metalness_pixels[:,:,1] = pixels_from_roughness[:,:,1] # Green from Roughness Green
+        base_metalness_pixels[:,:,2] = pixels_from_roughness[:,:,1] # Blue from Roughness Green
+        base_metalness_pixels[:,:,3] = 1.0 # Set Alpha to 1.0 (fully opaque)
+
+        metallic_img.pixels = base_metalness_pixels.ravel().tolist()
+        
+        metallic_img.filepath_raw = metallic_output_path
+        metallic_img.file_format = 'PNG'
+        metallic_img.save()
+        
+        # Clean up the loaded roughness image from Blender's memory if no longer needed
+        bpy.data.images.remove(roughness_img, do_unlink=True)
+        print(f"  Created base metalness texture for {obj_name} at {metallic_output_path}")
+
 def create_metallic_smoothness_map(mesh_objects, textures_dir, texture_size):
     """
     Creates a combined MetallicSmoothness map for Unity (Universal Render Pipeline - URP)
@@ -929,64 +1021,6 @@ def create_metallic_smoothness_map(mesh_objects, textures_dir, texture_size):
         # Clean up the loaded roughness image from Blender's memory if no longer needed
         bpy.data.images.remove(roughness_img, do_unlink=True)
         print(f"  Created MetallicSmoothness texture for {obj_name} at {metallic_smoothness_output_path}")
-
-def create_base_metalness_map(mesh_objects, textures_dir, texture_size):
-    """
-    Creates a base Metalness map (metallic.png) for PBR Adobe workflow
-    from the green channel of the baked Roughness map.
-    The green channel of the roughness map is replicated across R, G, B channels.
-    """
-    print("\n--- Phase: Creating Base Metalness Map (for PBR Adobe workflow) ---")
-    for obj in mesh_objects:
-        obj_name = obj.name
-        roughness_path = os.path.join(textures_dir, f"{obj_name}_roughness.png")
-        metallic_output_path = os.path.join(textures_dir, f"{obj_name}_metallic.png")
-
-        if not os.path.exists(roughness_path):
-            print(f"  Roughness texture missing for {obj_name} at {roughness_path}. Skipping base metalness creation.")
-            continue
-
-        metallic_name = f"{obj_name}_metallic"
-        if metallic_name in bpy.data.images:
-            bpy.data.images.remove(bpy.data.images[metallic_name], do_unlink=True)
-            print(f"  Removed existing base metalness image '{metallic_name}'.")
-
-        roughness_img = bpy.data.images.load(roughness_path)
-        
-        metallic_img = bpy.data.images.new(
-            name=metallic_name,
-            width=texture_size,
-            height=texture_size,
-            alpha=False # Metalness is typically RGB, no alpha
-        )
-        metallic_img.colorspace_settings.name = 'Non-Color' # Important for data
-
-        print(f"  Processing base metalness texture for {obj_name}...")
-        
-        if len(roughness_img.pixels) != texture_size * texture_size * 4:
-            print(f"  Error: Unexpected pixel count for roughness image {obj_name}. Expected {texture_size * texture_size * 4}, got {len(roughness_img.pixels)}. Cannot create base metalness map.")
-            bpy.data.images.remove(roughness_img) # Clean up
-            continue
-
-        #Initialize with 4 channels (RGBA) and explicitly set alpha to 1.0
-        base_metalness_pixels = np.zeros((texture_size, texture_size, 4)) 
-        pixels_from_roughness = np.array(list(roughness_img.pixels)).reshape((texture_size, texture_size, 4)) # Reshape to (H, W, RGBA)
-        
-        # Replicate green channel of roughness to R, G, B of metalness
-        base_metalness_pixels[:,:,0] = pixels_from_roughness[:,:,1] # Red from Roughness Green
-        base_metalness_pixels[:,:,1] = pixels_from_roughness[:,:,1] # Green from Roughness Green
-        base_metalness_pixels[:,:,2] = pixels_from_roughness[:,:,1] # Blue from Roughness Green
-        base_metalness_pixels[:,:,3] = 1.0 # Set Alpha to 1.0 (fully opaque)
-
-        metallic_img.pixels = base_metalness_pixels.ravel().tolist()
-        
-        metallic_img.filepath_raw = metallic_output_path
-        metallic_img.file_format = 'PNG'
-        metallic_img.save()
-        
-        # Clean up the loaded roughness image from Blender's memory if no longer needed
-        bpy.data.images.remove(roughness_img, do_unlink=True)
-        print(f"  Created base metalness texture for {obj_name} at {metallic_output_path}")
 
 def update_shader_nodes_for_unity_export(imported_meshes, textures_dir):
     """

@@ -7,8 +7,6 @@ try:
     print("DEBUG: config importato.")
     import segmentator_ops
     print("DEBUG: segmentator_ops importato.")
-    import totalsegmentator as ts
-    print("DEBUG: totalsegmentator importato.")
     import utils
     print("DEBUG: utils importato.")
 except ImportError as e:
@@ -71,10 +69,9 @@ def execute_segmentator_pipeline():
                             "color_override": None # per discriminare vene-arterie e colori specifici
                         }
                     }
-                else:
-                    print(f"DEBUG: Segmento '{seg_name}' (ID: {seg_id}) escluso da 'all_segment_data' perche' ha volume zero.")
-
-            print(f"DEBUG: Struttura 'all_segment_data' inizializzata con {len(all_segment_data)} segmenti con volume > 0.")
+                #else:
+                    # print(f"DEBUG: Segmento '{seg_name}' (ID: {seg_id}) escluso da 'all_segment_data' perche' ha volume zero.")
+            print("DEBUG: Struttura 'all_segment_data' inizializzata ignorando i segmenti con volume > 0.")
 
             # 3. Carica i dati SNOMED dal CSV per utilizzatli come lookup table, utili ad identificare il segmento.
             # Vengono generati 4 dizionari ordinati per 'Structure' (indice principale), type, region, category.
@@ -96,19 +93,22 @@ def execute_segmentator_pipeline():
 
             # 5. Carica le mappature dal file YAML (per le regole di export/combinazione)
             segment_mappings_yaml = utils.read_yaml(config.SEGMENT_MAPPINGS_FILE)
-            print(f"DEBUG: YAML Mappings loaded from {config.SEGMENT_MAPPINGS_FILE}: {len(segment_mappings_yaml)} entries.\n")
+            if not segment_mappings_yaml:
+                print("Nessuna mappatura caricata o file non trovato.")
+            else:
+                print(f"DEBUG: YAML Mappings loaded from {config.SEGMENT_MAPPINGS_FILE}: {len(segment_mappings_yaml)} entries.\n")
 
             # # 6. Carica le mappature dal file YAML (per le regole di assegnazione materiale)
             # shader_registry = utils.read_yaml(config.BLENDER_SHADER_REGISTRY_FILE)
             # print(f"DEBUG: YAML Mappings loaded from {config.BLENDER_SHADER_REGISTRY_FILE}: {len(shader_registry)} entries.\n")
 
             # --- Fase di Popolamento dei Custom Parameters per l'Export STL ---
-            print("\n--- Fase: Popolamento dei Custom Parameters per l'Export STL ---")
+            print("\nDEBUG:--- Fase: Popolamento dei Custom Parameters per l'Export STL ---")
             individual_mesh_rules = segment_mappings_yaml.get('individual_mesh_export', {})
             combined_mesh_rules = segment_mappings_yaml.get('combined_mesh_export', {})
             
             segmentator_ops.populate_custom_details_for_segments(all_segment_data, individual_mesh_rules, combined_mesh_rules)
-            print("\n--- Popolamento Custom Parameters per l'export completato. ---")
+            print("\nDEBUG:--- Popolamento Custom Parameters per l'export completato. ---")
 
             # --- Fase di Esportazione STL ---
             segmentator_ops.export_stl_from_multilabel_nii(

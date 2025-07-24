@@ -1,9 +1,9 @@
 # main.py (Orchestrator)
 import os
-import re
 import sys
 import subprocess
 import config
+# import io
 
 print("DEBUG: main.py avviato (prima del logging).")
 
@@ -13,12 +13,18 @@ if __name__ == "__main__":
     # Salva i riferimenti a stdout e stderr originali prima di qualsiasi reindirizzamento
     original_stdout = sys.stdout
     original_stderr = sys.stderr
+
+   # original_stdout_buffer = sys.stdout.buffer
+    #original_stderr_buffer = sys.stderr.buffer
+
+    #sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    #sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     
     # Stampa un messaggio sulla console originale prima di reindirizzare
     print(f"L'output completo verra salvato in: {log_file_path}")
 
     try:
-        # Apri il file di log in modalità scrittura, sovrascrivendo il contenuto precedente
+        # Apri il file di log in modalita' scrittura, sovrascrivendo il contenuto precedente
         with open(log_file_path, 'w') as log_file:
             # Reindirizza stdout e stderr al file di log
             sys.stdout = log_file
@@ -40,7 +46,8 @@ if __name__ == "__main__":
                     [python_executable, segmentation_script_path],
                     check=True,
                     text=True,
-                    capture_output=True
+                    capture_output=True,
+                    #encoding=config.TOTAL_SEGMENTATOR_SNOMED_ENCODING
                     )
                 print("Pipeline di segmentazione completata con successo.\n")
                 print("--- SEGMENTATION STDOUT (catturato) ---")
@@ -57,7 +64,7 @@ if __name__ == "__main__":
                     print(e.stderr)
                 sys.exit(1)
             except FileNotFoundError:
-                print(f"ERRORE: Lo script di segmentazione non è stato trovato in '{segmentation_script_path}'.")
+                print(f"ERRORE: Lo script di segmentazione non e' stato trovato in '{segmentation_script_path}'.")
                 sys.exit(1)
             except Exception as e:
                 print(f"ERRORE INATTESO durante il lancio della segmentazione: {e}")
@@ -90,7 +97,8 @@ if __name__ == "__main__":
                     command,
                     check=True,
                     text=True,
-                    capture_output=True
+                    capture_output=True,
+                    #encoding=config.TOTAL_SEGMENTATOR_SNOMED_ENCODING
                     )
 
                 print("--- BLENDER STDOUT (catturato) ---")
@@ -109,7 +117,7 @@ if __name__ == "__main__":
                     print(f"--- BLENDER STDERR (catturato) ---")
                     print(e.stderr)
                 sys.exit(1)
-            except FileNotFoundError: # Aggiunto per un controllo più specifico se lo script non è trovato
+            except FileNotFoundError: # Aggiunto per un controllo piu' specifico se lo script non e' trovato
                 print(f"ERRORE: L'eseguibile di Blender o lo script della pipeline non sono stati trovati.")
                 sys.exit(1)
             except Exception as e:
@@ -127,7 +135,7 @@ if __name__ == "__main__":
         print(f"ERRORE FATALE in main.py: {main_e}", file=original_stderr)
         traceback.print_exc(file=original_stderr)
         
-        # Se il log_file è aperto, prova a scrivere anche lì
+        # Se il log_file e' aperto, prova a scrivere anche li'
         if 'log_file' in locals() and not log_file.closed:
             print(f"ERRORE FATALE in main.py: {main_e}", file=log_file)
             traceback.print_exc(file=log_file)
@@ -135,6 +143,8 @@ if __name__ == "__main__":
 
     finally:
         # Ripristina stdout e stderr originali
+        #sys.stdout = io.TextIOWrapper(original_stdout_buffer, encoding='utf-8', errors='replace')
+        #sys.stderr = io.TextIOWrapper(original_stderr_buffer, encoding='utf-8', errors='replace')
         sys.stdout = original_stdout
         sys.stderr = original_stderr
         print("Esecuzione terminata. Controlla pipeline.log per i dettagli.")
