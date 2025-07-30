@@ -7,129 +7,164 @@ shader_ref:
   bone_shader:
     blend_file: "bone.blend"
     blend_material: "bone_mat"
-    color_override: "#E7D5B6" # Colore predefinito per l'osso
+    color_override:
 
   brain_shader: # per test su match diretto
     blend_file: "brain.blend" 
     blend_material: "brain_mat"
-    color_override: "#A0A0A0" # Grigio medio per il cervello
+    color_override:
 
   cartilage_shader:
     blend_file: "cartilage.blend"
     blend_material: "cartilage_mat"
-    color_override: "#CCCCCC" # Grigio chiaro per la cartilagine
+    color_override: # "#CCCCCC" # Grigio chiaro per la cartilagine
 
   cyst_shader:
     blend_file: "cyst.blend"
     blend_material: "cyst_mat"
-    color_override: "#ADD8E6" # Azzurro chiaro per le cisti
+    color_override: # "#ADD8E6" # Azzurro chiaro per le cisti
 
   cyst_2_shader:
     blend_file: "cyst_2.blend"
     blend_material: "cyst_2_mat"
-    color_override: "#ADD8E6" # Azzurro chiaro per le cisti (sim. alla prima)
+    color_override: # "#ADD8E6" # Azzurro chiaro per le cisti (sim. alla prima)
 
   default_shader:
     blend_file: "default.blend" # ultimo fallback (altrimenti non rendera)
     blend_material: "default_mat"
-    color_override: "#808080" # Grigio neutro (fallback)
+    color_override: # "#808080" # Grigio neutro (fallback)
 
   fat_tissue_shader:
     blend_file: "fat_tissue.blend"
     blend_material: "fat_tissue_mat"
-    color_override: "#E7DDA6" # Giallo chiaro per il tessuto adiposo
+    color_override: # "#E7DDA6" # Giallo chiaro per il tessuto adiposo
 
   gallbladder_shader:
     blend_file: "gallbladder.blend"
     blend_material: "gallbladder_mat"
-    color_override: "#80A040" # Verdastro-marrone per la cistifellea
+    color_override: # "#80A040" # Verdastro-marrone per la cistifellea
 
   guts_shader:
     blend_file: "guts.blend"
     blend_material: "guts_mat"
-    color_override: "#A0522D" # Marrone per gli intestini (organi digestivi)
+    color_override: # "#A0522D" # Marrone per gli intestini (organi digestivi)
 
   lung_shader:
     blend_file: "lung.blend"
     blend_material: "lung_mat"
-    color_override: "#C08080" # Rosa-marrone chiaro per i polmoni
+    color_override: # "#C08080" # Rosa-marrone chiaro per i polmoni
 
   lymph_node_shader:
     blend_file: "lymph_node.blend"
     blend_material: "lymph_node_mat"
-    color_override: "#90EE90" # Verde chiaro per i linfonodi
+    color_override: # "#90EE90" # Verde chiaro per i linfonodi
 
   muscle_shader:
     blend_file: "muscle.blend"
     blend_material: "muscle_mat"
-    color_override: "#C04040" # Rosso-marrone per i muscoli
+    color_override: # "#C04040" # Rosso-marrone per i muscoli
 
   nerve_shader:
     blend_file: "nerve.blend"
     blend_material: "nerve_mat"
-    color_override: "#FFD700" # Giallo oro per i nervi
+    color_override: # "#FFD700" # Giallo oro per i nervi
 
   soft_organ_shader: # Corrisponde a una biological_category come "soft_organ" o "parenchima"
-    blend_file: "organ.blend"
+    blend_file: "organ_1.blend"
     blend_material: "organ_mat"
-    color_override: "#C0C0C0" # Grigio per organi soffici (parenchima)
+    color_override: # "#C0C0C0" # Grigio per organi soffici (parenchima)
 
   hard_organ_shader: # Corrisponde a una biological_category come "hard_organ"
     blend_file: "organ_2.blend"
     blend_material: "organ_2_mat"
-    color_override: "#FF9999" # Rosa chiaro per organi duri (materiale bagnato)
+    color_override: # "#FF9999" # Rosa chiaro per organi duri (materiale bagnato)
 
   skin_shader:
     blend_file: "skin.blend"
     blend_material: "skin_mat"
-    color_override: "#F0C0A0" # Tonalità pelle chiara
+    color_override: # "#F0C0A0" # Tonalità pelle chiara
 
   spleen_shader:
     blend_file: "spleen.blend"
     blend_material: "spleen_mat"
-    color_override: "#B03060" # Rosso-violaceo per la milza
+    color_override: # "#B03060" # Rosso-violaceo per la milza
 
   artery_shader: # esempio di variante di colore
     blend_file: "tubes.blend" # File contenente i materiali per vene e arterie
     blend_material: "tubes_mat" # Nome del materiale arterioso in tubes.blend
-    color_override: "#FF0000" # Rosso tipico per le arterie
+    color_override: "#954230" # Rosso tipico per le arterie
 
   vein_shader: # esempio di variante di colore
     blend_file: "tubes.blend" # File contenente i materiali per vene e arterie
     blend_material: "tubes_mat" # Nome del materiale venoso in tubes.blend
-    color_override: "#0000FF" # Blu tipico per le vene
+    color_override: "#867FE1" # Blu tipico per le vene
 
   tube_stripes_shader:
     blend_file: "tube_stripes.blend" # trachea e cartilagini "striate"
     blend_material: "tube_stripes_mat"
-    color_override: "#E0E0E0" # Bianco sporco per cartilagini striate
+    color_override: # "#E0E0E0" # Bianco sporco per cartilagini striate
 
   tumor_1_shader:
     blend_file: "tumor_1.blend" # rosa
     blend_material: "tumor_1_mat"
-    color_override: "#FF69B4" # Rosa acceso per tumore 1
+    color_override: # "#FF69B4" # Rosa acceso per tumore 1
 
   tumor_2_shader:
     blend_file: "tumor_2.blend" # marrone
     blend_material: "tumor_2_mat"
-    color_override: "#8B4513" # Marrone sella per tumore 2
+    color_override: # "#8B4513" # Marrone sella per tumore 2
+    
+  thyroid_gland_shader:
+    blend_file: "organ_2.blend"
+    blend_material: "organ_2_mat"
+    color_override: "#AAAA00"
+  adrenal_gland_shader:
+    blend_file: "cyst_2.blend"
+    blend_material: "cyst_2_mat"
+    color_override: "#BAB873"  
+  kidney_shader:
+    blend_file: "organ_2.blend"
+    blend_material: "organ_2_mat"
+    color_override: "#8F4917"
+  
+  heart_shader:
+    blend_file: "heart.blend"
+    blend_material: "heart_mat"
+    blend_material: "heart_mat"
+    color_override: "#8F4917"
+  liver_shader:
+    blend_file: "organ_1.blend"
+    blend_material: "organ_1_mat"
+    color_override: "#CF2E00"
+
+  pancreas_shader:
+    blend_file: "fat_tissue.blend"
+    blend_material: "fat_tissue_mat"
+    color_override: "#BC9FA5"
 
 biological_categories:
   # Mappa le categorie biologiche a un shader_ref simbolico predefinito.
   # Questo fornisce un fallback per i segmenti che appartengono a quella categoria.
   #
-  # Casi specifici: (puntano direttamente allo shader)
+  # Casi specifici: (hanno uno shader dedicato)
   Brain: "brain_shader"
   Lung: "lung_shader"
   Spleen: "spleen_shader"
-  Gallbladder: gallbladder_shader
+  Gallbladder: "gallbladder_shader"
+  Heart: "heart_shader"
+  Liver: "liver_shader"
+  Pancreas: "pancreas_shader"
   
-  # biological_categories:
-  Organ: "hard_organ_shader" # Default per organi generici lisci - lucidi
-  Parenchima: "soft_organ_shader" #Default per organi spgunosi - rugosi
-  Bone: "bone_shader"
+  # Casi con color_override (utilizzano shader generici e color override)
   Artery: "artery_shader"
   Vein: "vein_shader"
+  Thyroid_gland: "thyroid_gland_shader"
+  Kidney: "kidney_shader"
+  
+  # biological_categories
+  Parenchima: "soft_organ_shader" #Default per organi spgunosi - rugosi #1
+  Organ: "hard_organ_shader" # Default per organi generici lisci - lucidi #2
+  Bone: "bone_shader"
   Cartilage: "cartilage_shader"
   Muscle: "muscle_shader"
   Nerve: "nerve_shader"

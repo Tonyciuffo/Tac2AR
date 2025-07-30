@@ -1,4 +1,5 @@
-# run_segmentation.py
+# coding: utf-8
+# segmentator_pipeline.py
 import sys
 import os
 
@@ -19,34 +20,58 @@ except Exception as e:
     sys.exit(1)
 
 def execute_segmentator_pipeline():
-    print("DEBUG: segmentator_pipeline.py in esecuzione (blocco main).")
+    print("DEBUG: segmentator_pipeline.py in esecuzione .")
     try:
+        """
+        Orchestra l'intera pipeline di segmentazione, dalla lettura dell'input
+        all'esportazione dei file STL e del manifest.
+        """
         print(f"--- Avvio Pipeline di Segmentazione per: {config.CLIENT_ID}, CASO: {config.PROJECT_SESSION_ID} ---")
-        # Carica il nii grezzo o lo ottiene dallo stack DICOM (input -> nii_raw)
-        input_files = segmentator_ops.fetch_input_files(config.INPUT_DIR)
 
-        # Elabora la segmentazione del nii grezzo secondo i TASKs specificati (nii_raw -> nii_segmented)
-        nii_segmented_file_path = segmentator_ops.run_total_segmentator(input_files, config.NII_SEGMENTED_DIR, config.TOTAL_SEGMENTATOR_TASKS)
+        # --- Fase 0: Pulizia Opzionale delle Directory ---
+        if config.CLEAN_SESSION_ON_START:
+            print("\n--- Fase 0: Pulizia delle Directory della Sessione Precedente ---")
+            utils.clean_session_directories()
+        else:
+            print("\n--- Fase 0: Pulizia saltata come da configurazione (CLEAN_SESSION_ON_START=False) ---")
+
+        # --- 1. Trova e Prepara i File di Input ---
+        print("\n--- Fase 1: Ricerca e Preparazione dei File di Input ---")
+        input_nifti_file = segmentator_ops.fetch_input_files(config.INPUT_DIR)
+        if not input_nifti_file:
+            print("ERRORE: Nessun file di input valido trovato. Interruzione della pipeline.")
+            return
+
+        # --- 2. Esegui TotalSegmentator ---
+        print("\n--- Fase 2: Esecuzione di TotalSegmentator ---")
+        # L'output di TotalSegmentator con --ml e' un singolo file NIfTI multi-etichetta
+        # nella directory specificata da -o.
+        segmented_nii_path = segmentator_ops.run_total_segmentator(
+            input_nifti_file,
+            config.NII_SEGMENTED_DIR,
+            config.TOTAL_SEGMENTATOR_TASKS
+        )
         
-        if nii_segmented_file_path:
-            print(f"DEBUG: File NIfTI segmentato disponibile in: {nii_segmented_file_path}")
-
+        if segmented_nii_path:
+            print(f"\nDEBUG: File NIfTI segmentato disponibile in: {segmented_nii_path}")
+            print(f"DEBUG: Caricamento della Class Map")
             # 1. Importa le classi dei segmenti disponibili da TotalSegmentator (map_to_binary)
             # Questa e' la mappa ID numerico -> Nome stringa del segmento
             segment_id_to_name_map = segmentator_ops.get_total_segmentator_class_map(
                 config.TOTAL_SEGMENTATOR_INSTALL_DIR,
                 config.TOTAL_SEGMENTATOR_TASKS[0]
             )
-            print(f"DEBUG: Class Map - Segment ID to Name Table: {len(segment_id_to_name_map)} entries.")
+            print(f"DEBUG: Class Map (Segment ID to Name Table) caricata: {len(segment_id_to_name_map)} entries.")
 
             # 1.5 Determina quali segmenti hanno un volume effettivo nel NIfTI
             valid_segment_ids = segmentator_ops.get_present_segment_ids(
-                nii_segmented_file_path,
+                segmented_nii_path,
                 segment_id_to_name_map # Passiamo questa mappa per i nomi nel debug
             )
-            print(f"DEBUG: I seguenti ID di segmento sono effettivamente presenti: {sorted(list(valid_segment_ids))}")
+            print(f"DEBUG: Segmenti con volume effettivo presenti: {sorted(list(valid_segment_ids))}")
 
             # 2. Inizializza la struttura dati centrale per tutti i segmenti *presenti*
+            print("\nDEBUG: Inizializzazione struttura 'all_segment_data'")
             all_segment_data = {}
             for seg_id, seg_name in segment_id_to_name_map.items():
                 if seg_id in valid_segment_ids:
@@ -71,13 +96,13 @@ def execute_segmentator_pipeline():
                     }
                 #else:
                     # print(f"DEBUG: Segmento '{seg_name}' (ID: {seg_id}) escluso da 'all_segment_data' perche' ha volume zero.")
-            print("DEBUG: Struttura 'all_segment_data' inizializzata ignorando i segmenti con volume > 0.")
+            print("DEBUG: Struttura 'all_segment_data' inizializzata")
 
             # 3. Carica i dati SNOMED dal CSV per utilizzatli come lookup table, utili ad identificare il segmento.
             # Vengono generati 4 dizionari ordinati per 'Structure' (indice principale), type, region, category.
             snomed_data_indices = segmentator_ops.load_snomed_mappings(
                 config.TOTAL_SEGMENTATOR_SNOMED_MAPPING,
-                encoding=config.TOTAL_SEGMENTATOR_SNOMED_ENCODING
+                encoding=config.FILE_ENCODING
             )
             if snomed_data_indices is None:
                 raise Exception("Impossibile caricare i dati di mappatura SNOMED.")
@@ -92,18 +117,16 @@ def execute_segmentator_pipeline():
             )
 
             # 5. Carica le mappature dal file YAML (per le regole di export/combinazione)
+            print(f"\nDEBUG: Caricamento dei dati SNOMED\n")
             segment_mappings_yaml = utils.read_yaml(config.SEGMENT_MAPPINGS_FILE)
             if not segment_mappings_yaml:
                 print("Nessuna mappatura caricata o file non trovato.")
             else:
-                print(f"DEBUG: YAML Mappings loaded from {config.SEGMENT_MAPPINGS_FILE}: {len(segment_mappings_yaml)} entries.\n")
-
-            # # 6. Carica le mappature dal file YAML (per le regole di assegnazione materiale)
-            # shader_registry = utils.read_yaml(config.BLENDER_SHADER_REGISTRY_FILE)
-            # print(f"DEBUG: YAML Mappings loaded from {config.BLENDER_SHADER_REGISTRY_FILE}: {len(shader_registry)} entries.\n")
+                print(f"DEBUG: YAML Mappings caricato da {config.SEGMENT_MAPPINGS_FILE}: {len(segment_mappings_yaml)} entries.\n")
 
             # --- Fase di Popolamento dei Custom Parameters per l'Export STL ---
-            print("\nDEBUG:--- Fase: Popolamento dei Custom Parameters per l'Export STL ---")
+            # Carica la 
+            print("\nDEBUG:--- Fase: Popolamento dei Custom Parameters per l'export individuale / combinato ---")
             individual_mesh_rules = segment_mappings_yaml.get('individual_mesh_export', {})
             combined_mesh_rules = segment_mappings_yaml.get('combined_mesh_export', {})
             
@@ -111,15 +134,16 @@ def execute_segmentator_pipeline():
             print("\nDEBUG:--- Popolamento Custom Parameters per l'export completato. ---")
 
             # --- Fase di Esportazione STL ---
+            print(f"\n--- Esportazione STL ---")
             segmentator_ops.export_stl_from_multilabel_nii(
-                nii_filepath=nii_segmented_file_path,
+                nii_filepath=segmented_nii_path,
                 all_segment_data=all_segment_data,
                 combined_mesh_rules=combined_mesh_rules,
                 output_dir=config.INPUT_MESH_DIR
             )
 
             # --- Fase di Scrittura del Manifest ---
-            print(f"\n--- Fase: Scrittura del Manifest dei Dati dei Segmenti ---")
+            print(f"\nDEBUG:--- Scrittura del Manifest dei Segmenti ---")
             # Assicurati che la directory di output esista prima di scrivere il file
             output_dir = os.path.dirname(config.SEGMENTS_DATA_MANIFEST_FILE)
             os.makedirs(output_dir, exist_ok=True)
@@ -129,7 +153,7 @@ def execute_segmentator_pipeline():
             
             print("\n--- Pipeline di Segmentazione e Creazione Mesh STL completata con successo. ---")
 
-        else: # nii_segmented_file_path e' None
+        else: # segmented_nii_path e' None
             print("AVVISO: La segmentazione NIfTI non ha prodotto un file valido. La pipeline di esportazione STL verra' saltata.")
 
     except Exception as e:

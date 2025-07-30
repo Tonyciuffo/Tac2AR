@@ -1,9 +1,10 @@
-# main.py (Orchestrator)
+# coding: utf-8
+# main.py
 import os
 import sys
 import subprocess
 import config
-# import io
+import utils
 
 print("DEBUG: main.py avviato (prima del logging).")
 
@@ -13,19 +14,13 @@ if __name__ == "__main__":
     # Salva i riferimenti a stdout e stderr originali prima di qualsiasi reindirizzamento
     original_stdout = sys.stdout
     original_stderr = sys.stderr
-
-   # original_stdout_buffer = sys.stdout.buffer
-    #original_stderr_buffer = sys.stderr.buffer
-
-    #sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    #sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     
     # Stampa un messaggio sulla console originale prima di reindirizzare
     print(f"L'output completo verra salvato in: {log_file_path}")
 
     try:
         # Apri il file di log in modalita' scrittura, sovrascrivendo il contenuto precedente
-        with open(log_file_path, 'w') as log_file:
+        with open(log_file_path, 'w', encoding=config.FILE_ENCODING) as log_file:
             # Reindirizza stdout e stderr al file di log
             sys.stdout = log_file
             sys.stderr = log_file
@@ -47,7 +42,7 @@ if __name__ == "__main__":
                     check=True,
                     text=True,
                     capture_output=True,
-                    #encoding=config.TOTAL_SEGMENTATOR_SNOMED_ENCODING
+                    encoding=config.FILE_ENCODING
                     )
                 print("Pipeline di segmentazione completata con successo.\n")
                 print("--- SEGMENTATION STDOUT (catturato) ---")
@@ -71,6 +66,14 @@ if __name__ == "__main__":
                 import traceback
                 traceback.print_exc()
                 sys.exit(1)
+
+            print("\n--- PREPARAZIONE PER BLENDER: Conversione del registro shader in formato JSON ---")
+            try:
+                utils.yaml_to_json(config.BLENDER_SHADER_REGISTRY_FILE, config.BLENDER_SHADER_REGISTRY_TMP)
+            except Exception as e:
+                print(f"ERRORE CRITICO durante la conversione del registro shader: {e}")
+                sys.exit(1)
+
 
             # --- 2. ESEGUI LA PIPELINE DI BLENDER ---
             print("\n--- FASE 2: Avvio della Pipeline di Blender ---")
@@ -98,7 +101,7 @@ if __name__ == "__main__":
                     check=True,
                     text=True,
                     capture_output=True,
-                    #encoding=config.TOTAL_SEGMENTATOR_SNOMED_ENCODING
+                    encoding=config.FILE_ENCODING
                     )
 
                 print("--- BLENDER STDOUT (catturato) ---")
@@ -143,8 +146,12 @@ if __name__ == "__main__":
 
     finally:
         # Ripristina stdout e stderr originali
-        #sys.stdout = io.TextIOWrapper(original_stdout_buffer, encoding='utf-8', errors='replace')
-        #sys.stderr = io.TextIOWrapper(original_stderr_buffer, encoding='utf-8', errors='replace')
         sys.stdout = original_stdout
         sys.stderr = original_stderr
+        # Pulizia del file di log (Blender Memory dump)
+        try:
+            print (" Pulizia del file di log")
+            utils.clean_log_file(log_file_path)
+        except Exception as e:
+            print (f"Errore durante la pulizia del log: {e}")
         print("Esecuzione terminata. Controlla pipeline.log per i dettagli.")

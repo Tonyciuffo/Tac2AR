@@ -2,27 +2,32 @@ individual_mesh_export:
   spleen:
     display_name: "Spleen"
     export: True
-    biological_category: "Parenchima"
+    biological_category: "Spleen"
 
-  kidney_right:
-    display_name: "Right Kidney"
+  kidney:
+    display_name: "Kidney"
     export: True
-    biological_category: "Parenchima"
+    biological_category: "Kidney"
+  
+  # kidney_right:
+    # display_name: "Right Kidney"
+    # export: True
+    # biological_category: "Parenchima"
 
-  kidney_left:
-    display_name: "Left Kidney"
-    export: True
-    biological_category: "Parenchima"
+  # kidney_left:
+    # display_name: "Left Kidney"
+    # export: True
+    # biological_category: "Parenchima"
 
   gallbladder:
     display_name: "Gallbladder"
     export: True
-    biological_category: "Organ"
+    biological_category: "Gallbladder"
 
   liver:
     display_name: "Liver"
     export: True
-    biological_category: "Parenchima"
+    biological_category: "Liver"
 
   stomach:
     display_name: "Stomach"
@@ -32,7 +37,7 @@ individual_mesh_export:
   pancreas:
     display_name: "Pancreas"
     export: True
-    biological_category: "Parenchima"
+    biological_category: "Pancreas"
 
   adrenal_gland_right:
     display_name: "Right Adrenal Gland"
@@ -42,22 +47,22 @@ individual_mesh_export:
   adrenal_gland_left:
     display_name: "Left Adrenal Gland"
     export: True
-    biological_category: "Organ"
+    biological_category: "adrenal_gland_shader"
 
   lung:
     display_name: "Lung"
     export: True
     biological_category: "Lung"
 
-  lung_left:
-    display_name: "Left Lung"
-    export: True
-    biological_category: "Organ"
+  # lung_left:
+    # display_name: "Left Lung"
+    # export: True
+    # biological_category: "Organ"
 
-  lung_right:
-    display_name: "Right Lung"
-    export: True
-    biological_category: "Organ"
+  # lung_right:
+    # display_name: "Right Lung"
+    # export: True
+    # biological_category: "Organ"
 
   esophagus:
     display_name: "Esophagus"
@@ -112,7 +117,7 @@ individual_mesh_export:
   heart:
     display_name: "Heart"
     export: True
-    biological_category: "Organ"
+    biological_category: "Heart"
 
   aorta:
     display_name: "Aorta"
@@ -272,12 +277,12 @@ individual_mesh_export:
   trachea:
     display_name: "Trachea"
     export: "True"
-    biological_category: "Digestive"
+    biological_category: "tube_stripes_shader"
     
   thyroid_gland:
     display_name: "Thyroid Gland"
     export: "True"
-    biological_category: "Organ"
+    biological_category: "thyroid_gland"
     
   kidney_cyst:
     display_name: "Kidney Cyst"
@@ -337,24 +342,40 @@ biological_categories: # QUI E' SOLO PER REF
   # Questo fornisce un fallback per i segmenti che appartengono a quella categoria.
   #
   # Casi specifici
+biological_categories:
+  # Mappa le categorie biologiche a un shader_ref simbolico predefinito.
+  # Questo fornisce un fallback per i segmenti che appartengono a quella categoria.
+  #
+  # Casi specifici: (hanno uno shader dedicato)
   Brain: "brain_shader"
   Lung: "lung_shader"
   Spleen: "spleen_shader"
-  Digestive: "guts_shader" # anche per organi digestivi generici
-  # Casi generici
-  Organ: "hard_organ_shader" # Default per organi generici lisci - lucidi
-  Parenchima: "soft_organ_shader" #Default per organi spgunosi - rugosi
-  Bone: "bone_shader"
+  Gallbladder: "gallbladder_shader"
+  Heart: "heart_shader"
+  Liver: "liver_shader"
+  Pancreas: "pancreas_shader"
+  
+  # Casi con color_override (utilizzano shader generici e color override)
   Artery: "artery_shader"
   Vein: "vein_shader"
+  Thyroid_gland: "thyroid_gland_shader"
+  Kidney: "kidney_shader"
+  
+  # biological_categories
+  Parenchima: "soft_organ_shader" #Default per organi spgunosi - rugosi #1
+  Organ: "hard_organ_shader" # Default per organi generici lisci - lucidi #2
+  Bone: "bone_shader"
   Cartilage: "cartilage_shader"
   Muscle: "muscle_shader"
   Nerve: "nerve_shader"
   Fat: "fat_tissue_shader" # snomed category
   Skin: "skin_shader"
+  Digestive: "guts_shader" # anche per organi digestivi generici
   LymphNode: "lymph_node_shader"
   Cyst: "cyst_shader"
-  Tumor: "tumor_1_shader" # Default per i tumori, se non specificato altrimenti
+  Tumor1: "tumor_1_shader" # Default per i tumori, se non specificato altrimenti
+  Tumor2: "tumor_2_shader"
 
   # ultimo fallback
+  
   Other: "default_shader" # Fallback per categorie non mappate esplicitamente

@@ -1,3 +1,4 @@
+# coding: utf-8
 # config.py
 import os
 import sys
@@ -10,28 +11,33 @@ CLIENT_ID = "HUVANT_TEST"
 # ID della sessione del progetto corrente (es. ID scansione paziente). Usato per la strutturazione delle directory e i nomi dei file.
 PROJECT_SESSION_ID = "CASE_001_SCAN_01"
 
+# Se True, le directory Tmp e Output della sessione corrente verranno eliminate all'avvio.
+# Impostare a False per il debug o per riesecuzioni parziali senza dover ricopiare i file di input.
+CLEAN_SESSION_ON_START = True
+
 # --- IMPOSTAZIONI SEGMENTATOR ---
 
 # Task/s di segmentazione da eseguire (es. ['total'], ['lung_vessels'], ['tissue_types'], etc.)
 # La libreria TotalSegmentator verra' chiamata direttamente per ogni task nella lista.
-TOTAL_SEGMENTATOR_TASKS = ['total']
+TOTAL_SEGMENTATOR_TASKS = ['total_mr']
 
 # Device da usare per la segmentazione ('gpu' o 'cpu').
 TOTAL_SEGMENTATOR_DEVICE = "gpu"
 
 # --- IMPOSTAZIONI DEL MODELLO E DEL BAKING ---
 
-# Distanza massima per la fusione dei vertici (Merge by Distance).
-MERGE_DISTANCE = 0.0001
+# Distanza massima per la fusione dei vertici (Merge by Distance e dissolve_degenerate).
+MERGE_DISTANCE = 0.0001 # Per merge_vertices_by_distance
+DISSOLVE_DEGENERATE_THRESHOLD = 0.00015 # Per delete_small_features
 
 # Limite massimo di facce per mesh dopo la decimazione.
-MAX_FACES_PER_MESH = 10000
+MAX_FACES_PER_MESH = 100000
 
 # Metodo di smoothing delle normali ('WEIGHTED' o 'AVERAGE').
 NORMAL_SMOOTHING_METHOD = 'WEIGHTED'
 
 # Dimensione delle texture generate (larghezza e altezza in pixel).
-TEXTURE_SIZE = 512
+TEXTURE_SIZE = 1024
 
 # Device da usare per il bake ('gpu' o 'cpu').
 BLENDER_DEVICE="gpu"
@@ -56,7 +62,8 @@ SHADERS_DIR_NAME = "Shaders"
 TEXTURES_DIR_NAME = "Textures"
 OUTPUT_DIR_NAME = "Output"
 SEGMENT_MAPPINGS_FILE_NAME = "segmentMappings.yaml"
-BLENDER_SHADER_REGISTRY_FILE_NAME = "blender_shader_registry.yaml"
+BLENDER_SHADER_REGISTRY_FILE_NAME = "blender_shader_registry.yaml" # assegnazione dei materiali
+BLENDER_SHADER_REGISTRY_TMP_NAME = "blender_shader_registry.json" # file intermedio per non chiamare readYaml dalla blender_pipeline
 SEGMENTS_DATA_FILE_NAME = "segments_data_manifest.json"
 OUTPUT_SUFFIX = "_processed"
 EXTENSION_PBR = "glb"
@@ -80,6 +87,7 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT_DIR, OUTPUT_DIR_NAME, CLIENT_ID, PROJECT_
 TEXTURES_DIR = os.path.join(OUTPUT_DIR, TEXTURES_DIR_NAME)
 SEGMENT_MAPPINGS_FILE = os.path.join(PROJECT_ROOT_DIR, SEGMENT_MAPPINGS_FILE_NAME)
 BLENDER_SHADER_REGISTRY_FILE = os.path.join(PROJECT_ROOT_DIR, BLENDER_SHADER_REGISTRY_FILE_NAME)
+BLENDER_SHADER_REGISTRY_TMP = os.path.join(TMP_DIR, CLIENT_ID, PROJECT_SESSION_ID, BLENDER_SHADER_REGISTRY_TMP_NAME)
 SEGMENTS_DATA_MANIFEST_FILE = os.path.join(OUTPUT_DIR, SEGMENTS_DATA_FILE_NAME)
 # Nomi dei file di output finali
 PBR_FILENAME = f"{PROJECT_SESSION_ID}{OUTPUT_SUFFIX}.{EXTENSION_PBR}" # Esempio: CASE_001_SCAN_01_processed.glb
@@ -99,4 +107,5 @@ TOTAL_SEGMENTATOR_SCRIPT_PATH = os.path.join(TOTAL_SEGMENTATOR_INSTALL_DIR, "bin
 # File contenente TUTTE le definizioni dei segmenti costruisce il registro fisso
 TOTAL_SEGMENTATOR_SNOMED_MAPPING = os.path.join(TOTAL_SEGMENTATOR_INSTALL_DIR, "resources", "totalsegmentator_snomed_mapping.csv")
 TOTAL_SEGMENTATOR_SNOMED_KEY = 'Structure'
-TOTAL_SEGMENTATOR_SNOMED_ENCODING = 'utf-8'
+# Encoding universale per tutte le operazioni di lettura/scrittura file e per l'output dei sottoprocessi.
+FILE_ENCODING = 'utf-8'

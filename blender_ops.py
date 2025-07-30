@@ -1,3 +1,4 @@
+# coding: utf-8
 # blender_ops.py
 
 import bpy
@@ -227,19 +228,20 @@ def apply_world_scale(mesh_objects, scale_factor):
 def merge_vertices_by_distance(mesh_objects, distance):
     """Merges vertices in mesh objects within a given distance."""
     print(f"Performing 'Merge by Distance' for mesh objects with distance: {distance}")
-    for obj in mesh_objects:
-        if obj.type == 'MESH':
-            bpy.context.view_layer.objects.active = obj
-            bpy.ops.object.select_all(action='DESELECT')
-            obj.select_set(True)
+    if distance > 0:
+        for obj in mesh_objects:
+            if obj.type == 'MESH':
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.select_all(action='DESELECT')
+                obj.select_set(True)
 
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.remove_doubles(threshold=distance)
-            bpy.ops.object.mode_set(mode='OBJECT')
-            obj.select_set(False)
-            # print(f"  Merge vertices on '{obj.name}' completed.")
-    bpy.context.view_layer.update()
+                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.mesh.remove_doubles(threshold=distance)
+                bpy.ops.object.mode_set(mode='OBJECT')
+                obj.select_set(False)
+                # print(f"  Merge vertices on '{obj.name}' completed.")
+        bpy.context.view_layer.update()
 
 def fix_normal_orientation(mesh_objects):
     """Recalculates normals to point outside for mesh objects."""
@@ -258,21 +260,72 @@ def fix_normal_orientation(mesh_objects):
             # print(f"  Normals orientation of '{obj.name}' corrected.")
     bpy.context.view_layer.update()
 
-def delete_small_features(mesh_objects):
+def delete_small_features(mesh_objects, threshold):
     """Deletes degenerate geometry (small features) from mesh objects."""
     print("Performing 'Delete Small Features' (Dissolve Degenerate) for mesh objects.")
-    for obj in mesh_objects:
-        if obj.type == 'MESH':
-            bpy.context.view_layer.objects.active = obj
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.dissolve_degenerate()
-            bpy.ops.object.mode_set(mode='OBJECT')
-            obj.select_set(False)
-            # print(f"  Small features of '{obj.name}' deleted.")
-    bpy.context.view_layer.update()
+    if threshold > 0:
+        for obj in mesh_objects:
+            if obj.type == 'MESH':
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.mesh.dissolve_degenerate(threshold=config.DISSOLVE_DEGENERATE_THRESHOLD)
+                bpy.ops.object.mode_set(mode='OBJECT')
+                obj.select_set(False)
+                # print(f"  Small features of '{obj.name}' deleted.")
+        bpy.context.view_layer.update()
 
-def decimate_mesh_objects(mesh_objects, max_faces_limit):
+def decimate_mesh_objects(mesh_objects, max_faces_limit, segment_manifest):
+    """Decimates mesh objects to reduce face count taking account of the export_as_individual_mesh in segmentMappings."""
+
+    print(f"Performing 'Decimation' for mesh objects with limit: {max_faces_limit} / ({max_faces_limit*1000} on individual object) faces.")
+    for obj in mesh_objects:
+        decimate = False
+        polycount = 0
+        poly_removed = 0
+
+        if obj.name in segment_manifest:
+            export_details = segment_manifest[obj.name].get('custom_parameters', {})
+            export = export_details.get('export_as_individual_mesh')
+            if not export or len(obj.data.polygons)>max_faces_limit*1000: # upper limit to prevent crash
+                decimate = True
+                current_faces = len(obj.data.polygons)
+                polycount += current_faces
+                print(f"'{obj.name}' is flagged Export as Individual, decimation skipped. Faces: '{current_faces}'.")
+
+        if obj.type == 'MESH' and decimate:
+            current_faces = len(obj.data.polygons)
+            polycount += current_faces
+            print(f"  Object '{obj.name}': {current_faces} faces.")
+
+            if current_faces > max_faces_limit:
+                ratio = max_faces_limit / current_faces
+                print(f"  Reduction needed for '{obj.name}'. Ratio: {ratio:.4f}")
+
+                mod = obj.modifiers.new(name="DecimateMod", type='DECIMATE')
+                mod.decimate_type = 'COLLAPSE'
+                mod.ratio = ratio
+
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.select_all(action='DESELECT')
+                obj.select_set(True)
+                
+                if bpy.ops.object.mode_set.poll():
+                    bpy.ops.object.mode_set(mode='OBJECT')
+                
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+                obj.select_set(False)
+                
+                new_faces = len(obj.data.polygons)
+                poly_removed += new_faces
+                print(f"  Decimation on '{obj.name}' completed. New faces: {new_faces}.")
+            else:
+                print(f"  Decimation not needed for '{obj.name}'. Faces: {current_faces}.")
+                polycount += current_faces
+    bpy.context.view_layer.update()
+    return polycount, poly_removed
+
+def OLD_decimate_mesh_objects(mesh_objects, max_faces_limit):
     """Decimates mesh objects to reduce face count."""
     print(f"Performing 'Decimation' for mesh objects with limit: {max_faces_limit} faces per object.")
     for obj in mesh_objects:
@@ -443,15 +496,21 @@ def create_single_scene_root(mesh_objects, root_name_base):
 
 # --- Material Application Functions ---
 
-def enrich_segment_data_with_materials(segments_manifest, blender_shader_registry):
+def match_materials_on_manifest(segments_manifest, blender_shader_registry):
     """
     Enriches the segment manifest with Blender-specific material data.
     This function contains all the fallback logic for deciding which material to use.
     """
-    print("\n--- Enriching Manifest with Material Data ---")
+    print("\n--- Matching Manifest with Material Data ---")
     shader_ref_map = blender_shader_registry.get('shader_ref', {})
     category_shader_map = blender_shader_registry.get('biological_categories', {})
     default_shader_ref = "default_shader"
+    direct_match_count = 0
+    partial_match_count = 0
+    snomed_match_count = 0
+    biological_category_match_count= 0
+    fallback_match_count = 0
+
 
     for seg_name, seg_data in segments_manifest.items():
         shader_ref_to_use = None # Resettato per ogni segmento
@@ -459,27 +518,44 @@ def enrich_segment_data_with_materials(segments_manifest, blender_shader_registr
         snomed_type = seg_data.get('snomed_details', {}).get('type')
 
         # 1. Direct Match Logic: Check for a shader named after the segment itself
-        potential_direct_ref = f"{seg_name}_shader"
-        if potential_direct_ref in shader_ref_map:
-            shader_ref_to_use = potential_direct_ref
+        potential_direct_match = f"{seg_name.lower()}_shader"
+        if potential_direct_match in shader_ref_map:
+            shader_ref_to_use = potential_direct_match
             print(f"DEBUG: Segment '{seg_name}' -> Direct Match: '{shader_ref_to_use}'.")
+            direct_match_count += 1
         
+        # 1.5 Partial Match Logic
+        if shader_ref_to_use is None:
+            partial_matches = [
+                shader_key for shader_key in shader_ref_map 
+                if any(part in shader_key.lower() for part in seg_name.lower().split('_'))
+            ]
+            if partial_matches:
+                shader_ref_to_use = partial_matches[0]
+                print(f"DEBUG: Segment '{seg_name}' -> Partial Match: '{shader_ref_to_use}'.")
+                partial_match_count += 1
+
         # 2. SNOMED Type Match Logic (Medium-High Priority)
         if shader_ref_to_use is None and snomed_type:
+            # potential_snomed_match = f"{snomed_type.capitalize()}"
             potential_snomed_match = f"{snomed_type.lower()}_shader"
+            # potential_snomed_match = f"{snomed_type}_shader"
             if potential_snomed_match in shader_ref_map:
                 shader_ref_to_use = potential_snomed_match
-                print(f"DEBUG: Segment '{seg_name}' -> SNOMED Type Match (derived): '{potential_snomed_match}'.")
+                print(f"DEBUG: Segment '{seg_name}' -> SNOMED Type Match: '{potential_snomed_match}'.")
+                snomed_match_count += 1
 
         # 3. Biological Category Match Logic
         if shader_ref_to_use is None and biological_category_type:
             if biological_category_type in category_shader_map:
                 shader_ref_to_use = category_shader_map[biological_category_type]
-                print(f"DEBUG: Segment '{seg_name}' -> Biological Category Type Match: '{shader_ref_to_use}'.")
+                print(f"DEBUG: Segment '{seg_name}' -> Biological Category Match: '{shader_ref_to_use}'.")
+                biological_category_match_count += 1
             
         # 4. Fallback to Default
         if shader_ref_to_use is None:
             shader_ref_to_use = default_shader_ref
+            fallback_match_count += 1
 
         # Get material details from the chosen shader_ref
         shader_details = shader_ref_map.get(shader_ref_to_use, {})
@@ -488,19 +564,19 @@ def enrich_segment_data_with_materials(segments_manifest, blender_shader_registr
         seg_data['custom_parameters']['blend_material'] = shader_details.get('blend_material')
         seg_data['custom_parameters']['color_override'] = shader_details.get('color_override')
         
-        # Aggiornato il print per maggiore chiarezza sul "final shader ref"
-        print(f"DEBUG: Segment '{seg_name}' -> Shader Ref '{shader_ref_to_use}' -> Material '{shader_details.get('blend_material')}' -> Color Override '{shader_details.get('color_override')}'.")
-
+        # print(f"DEBUG: Segment '{seg_name}' -> Shader Ref '{shader_ref_to_use}' -> Material '{shader_details.get('blend_material')}' -> Color Override '{shader_details.get('color_override')}'.")
+    print(f"DEBUG: *** RECAP Match count. Direct: '{direct_match_count}', Partial: '{partial_match_count}, 'Snomed: '{snomed_match_count}', Biological Category: '{biological_category_match_count}', Fallback: '{fallback_match_count}'  ")
     return segments_manifest
 
 def apply_materials_from_manifest(imported_meshes, enriched_manifest):
     """
     Applies materials to meshes based on the pre-enriched manifest.
     This function is a simple executor, with no decision logic.
+    Returns a list of temporary items (nodes and objects) to be cleaned up later.
     """
     print("\n--- Applying Materials from Enriched Manifest ---")
     materials_to_append = {}  # {mat_name: blend_file_path}
-    created_override_nodes = [] # Initialize list to track created override nodes
+    temp_items_for_cleanup = [] # List to track created override nodes AND projector objects
 
     # First, determine which object corresponds to which entry in the manifest
     # and gather all unique materials that need to be appended.
@@ -534,6 +610,24 @@ def apply_materials_from_manifest(imported_meshes, enriched_manifest):
                     filename=mat_name
                 )
                 print(f"  Appended material '{mat_name}' from '{os.path.basename(blend_path)}'.")
+
+                # --- Add TEMPLATE MATERIALS to cleanup list ---
+                temp_items_for_cleanup.append(mat_name) #Material
+                print(f"    -> found Template Material '{mat_name}', scheduled for cleanup.")
+                # # Ispeziona i nodi del materiale appena importato
+                # mat_nodes = bpy.data.materials.get(mat_name)
+                # if mat_nodes and mat_nodes.use_nodes:
+                #     for node in mat_nodes.node_tree.nodes:
+                #         temp_items_for_cleanup.append(node.name)
+                #         print(f"      -> Found Template Material Node '{node.name}' in template '{mat_name}', scheduled for cleanup.")
+
+                # --- Add PROJECTOR to cleanup LIST ---
+                projector_name = f"{mat_name.capitalize()}_projector"
+                if projector_name in bpy.data.objects:
+                    temp_items_for_cleanup.append(projector_name)
+                    print(f"    -> Found Projector '{projector_name}', scheduled for cleanup.")
+                
+
             except Exception as e:
                 print(f"  ERROR appending material '{mat_name}': {e}")
 
@@ -555,15 +649,20 @@ def apply_materials_from_manifest(imported_meshes, enriched_manifest):
                 print(f"  Applied unique material '{new_mat.name}' (copy of '{mat_name}') to '{obj.name}'.")
 
                 # --- Apply Color Override if specified ---
-                color_override_hex = mat_details.get('color_override')
-                if color_override_hex:
-                    mix_node_name = apply_color_override_node(obj, new_mat, color_override_hex)
-                    if mix_node_name:
-                        created_override_nodes.append(mix_node_name)
+                if obj.name in enriched_manifest:
+                    mat_details = enriched_manifest[obj.name].get('custom_parameters', {})
+                    color_override_hex = mat_details.get('color_override')
+
+                    if color_override_hex:
+                        #print ("\n**** COLOR OVERRIDE ROUTINE ***\n")
+                        mix_node_name = apply_color_override_node(obj, new_mat, color_override_hex)
+                        if mix_node_name:
+                            temp_items_for_cleanup.append(mix_node_name)
                 # --- End Color Override ---
             else:
                 print(f"  ERROR: Base material '{mat_name}' not found after append for object '{obj.name}'.")
-    return created_override_nodes
+    return temp_items_for_cleanup
+
 
 def apply_color_override_node(obj, material, color_override_hex):
     """
@@ -592,7 +691,7 @@ def apply_color_override_node(obj, material, color_override_hex):
             mix_node.location = original_from_node.location + mathutils.Vector((300, 0))
             
             override_rgb = utils.hex_to_rgb(color_override_hex)
-            print(f"    DEBUG: override_rgb (from hex_to_rgb): {override_rgb}")
+            # print(f"    DEBUG: override_rgb (from hex_to_rgb): {override_rgb}")
 
             
             # LINK 'A'
@@ -644,7 +743,7 @@ def uv_map(mesh_objects, texture_size):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart UV Project parameters: angle_limit, island_margin, area_weight, correct_aspect, scale_to_bounds
-        bpy.ops.uv.smart_project(angle_limit=66.0, island_margin=0.02, area_weight=0.0, correct_aspect=True, scale_to_bounds=True)
+        bpy.ops.uv.smart_project(angle_limit=60.0, island_margin=0.02, area_weight=0.75, correct_aspect=True, scale_to_bounds=True)
         
         bpy.ops.object.mode_set(mode='OBJECT')
         obj.select_set(False)
@@ -710,8 +809,7 @@ def bake_channel(mesh_object, channel_type, textures_dir, texture_size, color_sp
         'target': 'IMAGE_TEXTURES',
         'width': texture_size,
         'height': texture_size,
-        'margin': 8, # Margine per evitare bleed
-        # 'selected_to_active': False # Rimosso: Blender 4.2.10 non lo riconosce per il bake su se stesso
+        'margin': 8, # Margine dilazione
     }
 
     # Adjust bake arguments for each bake type
@@ -761,29 +859,105 @@ def bake_textures(imported_meshes, textures_dir, texture_size, blender_device):
             created_bake_nodes.append(node)
     return created_bake_nodes
 
-def remove_bake_temp_nodes(node_names_to_remove): # <--- Accetta NOMI, non oggetti Node
-    """Removes specific temporary bake/linking nodes from all materials based on their names."""
-    print("\n--- Phase: Removing Temporary Bake Texture Nodes ---")
+def TO_DO_NEW_remove_bake_temp_items(cleanup_registry):
+    print("\n--- Phase: Structured Cleanup ---")
+    count = 0
 
-    nodes_removed_count = 0
-    # Iteriamo su tutti i materiali presenti nella scena
+    # NODES
+    for mat_name, node_name in cleanup_registry.get("nodes", []):
+        mat = bpy.data.materials.get(mat_name)
+        if mat and mat.use_nodes:
+            node = mat.node_tree.nodes.get(node_name)
+            if node:
+                try:
+                    mat.node_tree.nodes.remove(node)
+                    print(f"  Removed node '{node_name}' from material '{mat_name}'.")
+                    count += 1
+                except Exception as e:
+                    print(f"  Error removing node '{node_name}' from '{mat_name}': {e}")
+
+    # OBJECTS
+    for obj_name in cleanup_registry.get("objects", []):
+        obj = bpy.data.objects.get(obj_name)
+        if obj:
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+                print(f"  Removed object '{obj_name}'")
+                count += 1
+            except Exception as e:
+                print(f"  Error removing object '{obj_name}': {e}")
+
+    # MATERIALS
+    for mat_name in cleanup_registry.get("materials", []):
+        mat = bpy.data.materials.get(mat_name)
+        if mat:
+            try:
+                bpy.data.materials.remove(mat, do_unlink=True)
+                print(f"  Removed material '{mat_name}'")
+                count += 1
+            except Exception as e:
+                print(f"  Error removing material '{mat_name}': {e}")
+
+    print(f"  Total {count} temporary items removed.")
+
+def remove_bake_temp_nodes(item_names_to_remove):
+    """
+    Removes temporary items (shader nodes AND scene objects) from the scene
+    based on a list of their names. The name is kept for documentation consistency.
+    This version is hardened against iteration errors.
+    """
+    print("\n--- Phase: Cleaning Up Temporary Items (Nodes and Objects) ---")
+    if not item_names_to_remove:
+        print("  No temporary items to clean up.")
+        return
+
+    items_removed_count = 0
+    
+    # Create set of names to avoid redundant checks
+    node_targets = []     # list of (material_name, node_name)
+    names_to_remove_set = set(item_names_to_remove)
+
+    # 1. Clean up Shader Nodes from all materials
     for mat in bpy.data.materials:
         if mat.use_nodes:
             nodes = mat.node_tree.nodes
-            # Creiamo una copia della lista dei nodi perché stiamo modificando la collezione mentre iteriamo
-            for node_name in list(node_names_to_remove): # Iteriamo sui NOMI che vogliamo rimuovere
-                if node_name in nodes: # Verifichiamo se un nodo con quel NOME esiste in QUESTO materiale
+            # Iterate over a copy of the node names to safely remove them
+            for node_name in list(names_to_remove_set):
+                if node_name in nodes:
                     try:
-                        nodes.remove(nodes[node_name])
-                        print(f"  Removed temporary bake/linking node '{node_name}' from material '{mat.name}'.")
-                        nodes_removed_count += 1
+                        node_to_remove = nodes[node_name]
+                        nodes.remove(node_to_remove)
+                        print(f"  Removed temporary node '{node_name}' from material '{mat.name}'.")
+                        items_removed_count += 1
                     except Exception as e:
                         print(f"  Error removing node '{node_name}' from material '{mat.name}': {e}")
-                # else: # Questo 'else' puo' essere rumoroso, puoi commentarlo
-                #     print(f"  Node '{node_name}' not found in material '{mat.name}'.")
-    
-    print(f"  Total {nodes_removed_count} temporary bake nodes removed across all materials.")
+
+    # 2. Clean up Scene Objects
+    # Iterate over a copy of the object names to safely remove them
+    for obj_name in list(names_to_remove_set):
+        if obj_name in bpy.data.objects:
+            try:
+                object_to_remove = bpy.data.objects[obj_name]
+                bpy.data.objects.remove(object_to_remove, do_unlink=True)
+                print(f"  Removed temporary object: '{obj_name}'")
+                items_removed_count += 1
+            except Exception as e:
+                print(f"  Error removing object '{obj_name}': {e}")
+
+    # 3. Clean up Materials
+    for mat_name in list(names_to_remove_set):
+        if mat_name in bpy.data.materials:
+            try:
+                material_to_remove = bpy.data.materials[mat_name]
+                bpy.data.materials.remove(material_to_remove, do_unlink=True)
+                print(f"  Removed temporary material: '{mat_name}'")
+                items_removed_count += 1
+            except Exception as e:
+                print(f"  Error removing material '{mat_name}': {e}")
+
+    print(f"  Total {items_removed_count} temporary items removed.")
     bpy.context.view_layer.update()
+
 
 def link_baked_textures(imported_meshes, textures_dir):
     """Links baked textures to the Principled BSDF node in the material of each mesh."""

@@ -1,13 +1,18 @@
+# coding: utf-8
+# utils.py
+
 import os
 import yaml
 import json
 import re
 import csv
+import shutil
+import config
 
 def read_yaml(file):
     # Carica le mappature dei segmenti
     try:
-        with open(file, 'r') as f:
+        with open(file, 'r', encoding=config.FILE_ENCODING) as f:
             success = yaml.safe_load(f)
         # print(f"DEBUG: Read Yaml - Mappature caricate da {file}: {len(success)}\n")
         return success
@@ -20,13 +25,32 @@ def read_yaml(file):
 
 def write_json(data, file_path):
     """Scrive un dizionario in un file JSON con una formattazione leggibile."""
-    with open(file_path, 'w') as f:
+    with open(file_path, 'w', encoding=config.FILE_ENCODING) as f:
         json.dump(data, f, indent=4)
 
 def read_json(file_path):
     """Legge un file JSON e restituisce il suo contenuto."""
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding=config.FILE_ENCODING) as f:
         return json.load(f)
+
+def yaml_to_json(yaml_file_path, json_file_path):
+    """
+    Converte un file YAML in un file JSON.
+
+    Args:
+        yaml_file_path (str): Il percorso del file YAML di input.
+        json_file_path (str): Il percorso del file JSON di output.
+    """
+    try:
+        print(f"DEBUG: Conversione da '{yaml_file_path}' a '{json_file_path}'...")
+        yaml_data = read_yaml(yaml_file_path)
+        write_json(yaml_data, json_file_path)
+        print("  Conversione completata con successo.")
+    except Exception as e:
+        print(f"ERRORE durante la conversione da YAML a JSON: {e}")
+        raise
+
+
 
 def hex_to_rgb(hex_color):
     """Converte un colore esadecimale (es. #RRGGBB) in un tuple RGB normalizzato (0-1)."""
@@ -63,42 +87,75 @@ def number_to_ordinal(num_str: str) -> str:
     except ValueError:
         return num_str # Ritorna l'originale se non � un numero valido
 
+def strip_qualifier_suffixes(name: str, suffixes: list[str] = None) -> list[str]:
+    """
+    Strippa iterativamente i suffissi da un nome, restituendo una lista di nomi derivati.
+    
+    Args:
+        name (str): Nome originale da processare
+        suffixes (list[str], optional): Lista di suffissi da rimuovere. 
+                                        Se None, usa una lista predefinita.
+    
+    Returns:
+        list[str]: Lista di nomi dopo la rimozione dei suffissi
+    """
+    # Lista predefinita di suffissi se non fornita
+    if suffixes is None:
+        suffixes = [
+            '_left', '_right',
+            '_upper','_middle','_lower',
+            '_L5', '_L4', '_L3', '_L2', '_L1',
+            '_T12', '_T11', '_T10', '_T9', '_T8', '_T7', '_T6', '_T5', '_T4', '_T3', '_T2', '_T1',
+            '_C7', '_C6', '_C5', '_C4', '_C3', '_C2', '_C1',
+            '_S1',
+            '_1','_2','_3','_4','_5','_6','_7','_8','_9','_10','_11','_12',
+            '_lumbar', '_thoracic', '_cervical',
+            '_maximus', '_medius', '_minimus',
+            '_body', '_lobe',
+        ]
+    
+    # Lista per memorizzare i nomi derivati
+    derived_names = [name]
+    
+    # Copia del nome corrente per l'iterazione
+    current_name = name
+    
+    while True:
+        suffix_found = False
+        for suffix in suffixes:
+            if current_name.endswith(suffix):
+                # Rimuovi il suffisso
+                current_name = current_name[:-len(suffix)]
+                
+                # Aggiungi il nuovo nome se non è già presente
+                if current_name and current_name not in derived_names:
+                    derived_names.append(current_name)
+                
+                suffix_found = True
+                break  # Ricomincia con il nome appena accorciato
+        
+        # Esci dal ciclo se non sono stati trovati altri suffissi
+        if not suffix_found:
+            break
+    
+    return derived_names
+
 def generate_snomed_candidate_names(original_seg_name: str) -> list[str]:
     """
     Genera una lista ordinata di nomi candidati per il lookup, applicando
     regole di normalizzazione e stripping iterativo dei suffissi.
     """
-    candidates = [original_seg_name]
+    candidates = strip_qualifier_suffixes(original_seg_name)
     
-    qualifier_suffixes_to_strip = [
-        '_left', '_right',
-        '_upper','_middle','_lower',
-        '_L5', '_L4', '_L3', '_L2', '_L1',
-        '_T12', '_T11', '_T10', '_T9', '_T8', '_T7', '_T6', '_T5', '_T4', '_T3', '_T2', '_T1',
-        '_C7', '_C6', '_C5', '_C4', '_C3', '_C2', '_C1',
-        '_S1',
-        '_1','_2','_3','_4','_5','_6','_7','_8','_9','_10','_11','_12',
-        '_lumbar', '_thoracic', '_cervical',
-        '_maximus', '_medius', '_minimus',
-        '_body', '_lobe',
-    ]
+    additional_candidates = []
+    for candidate in candidates:
+        # Converti a singolare
+        singular_stripped = plural_to_singular(candidate)
+        if singular_stripped != candidate and singular_stripped not in candidates:
+            additional_candidates.append(singular_stripped)
+    
+    candidates.extend(additional_candidates)
 
-    current_name = original_seg_name
-    while True:
-        suffix_found_this_iteration = False
-        for suffix in qualifier_suffixes_to_strip:
-            if current_name.endswith(suffix):
-                current_name = current_name[:-len(suffix)]
-                if current_name and current_name not in candidates:
-                    candidates.append(current_name)
-                    singular_stripped = plural_to_singular(current_name)
-                    if singular_stripped != current_name and singular_stripped not in candidates:
-                        candidates.append(singular_stripped)
-                suffix_found_this_iteration = True
-                break  # Riavvia la ricerca con il nome appena accorciato
-
-        if not suffix_found_this_iteration:
-            break  # Esce dal ciclo while se non sono stati trovati altri suffissi
 
     # --- Gestione candidati in stile 'CodeMeaning' e casi composti ---
     formatted_generic = ' '.join([plural_to_singular(p).capitalize() for p in original_seg_name.split('_')])
@@ -183,20 +240,64 @@ def load_csv(csv_path, key_column, encoding):
         print(f"Generic error loading '{csv_path}': {e}")
         return data_map
 
-def OLD_hex_to_rgb(hex_color_str):
+def clean_log_file(input_file):
     """
-    Converts a hexadecimal string (e.g., "FF0000") to an RGB tuple (0-1).
-    Returns (0.0, 0.0, 0.0) for invalid input.
+    Reads an input log file and writes a new version, tripping any lines that start with the specific prefix
     """
-    if not isinstance(hex_color_str, str) or len(hex_color_str) != 6:
-        print(f"Warning: Invalid hexadecimal color: '{hex_color_str}'. Using black.")
-        return (0.0, 0.0, 0.0)
+    prefix_to_remove = "Fra:1 Mem:"
+    lines_removed = 0
+    total_lines_read = 0
+    
+    temp_file = input_file + ".tmp"
+
+    # Crea il nome del file di output
+    output_file = input_file.replace('.log', '_cleaned.log')
     
     try:
-        r = int(hex_color_str[0:2], 16) / 255.0
-        g = int(hex_color_str[2:4], 16) / 255.0
-        b = int(hex_color_str[4:6], 16) / 255.0
-        return (r, g, b)
-    except ValueError:
-        print(f"Warning: Could not convert hexadecimal color '{hex_color_str}'. Using black.")
-        return (0.0, 0.0, 0.0)
+        with open(input_file, 'r', encoding=config.FILE_ENCODING) as infile, \
+             open(temp_file, 'w', encoding=config.FILE_ENCODING) as outfile:
+                for line in infile:
+                    total_lines_read += 1
+                    if not line.strip().startswith(prefix_to_remove):
+                        outfile.write(line)
+                    else:
+                        lines_removed += 1
+        
+        # Sovrascrive il file originale con quello pulito
+        shutil.move(temp_file, input_file)           
+        
+        print(f"Pulizia completata.")
+        print(f"[clean_log_file] Pulizia completata.")
+        print(f"[clean_log_file] Righe totali: {total_lines_read}, rimosse: {lines_removed}.")
+        print(f"[clean_log_file] File aggiornato: '{input_file}'")
+
+    except FileNotFoundError:
+        print(f"Errore: Il file di input '{input_file}' non è stato trovato.")
+    except OSError as e:
+        print(f"Errore durante la sovrascrittura del file originale: {e}")
+        print(f"Il file pulito è comunque disponibile in '{output_file}'.")
+
+def clean_session_directories():
+    """
+    Elimina le directory di output e temporanee della sessione corrente per garantire
+    un'esecuzione pulita. Legge i percorsi da config.py.
+    """
+    import shutil
+    import config
+
+    # Definisci i percorsi delle directory di sessione da eliminare
+    output_session_dir = config.OUTPUT_DIR
+    tmp_session_dir = os.path.join(config.TMP_DIR, config.CLIENT_ID, config.PROJECT_SESSION_ID)
+
+    # Lista delle directory da pulire
+    dirs_to_clean = [output_session_dir, tmp_session_dir]
+
+    for dir_path in dirs_to_clean:
+        if os.path.exists(dir_path):
+            try:
+                shutil.rmtree(dir_path)
+                print(f"  Pulita directory della sessione precedente: {dir_path}")
+            except OSError as e:
+                print(f"ERRORE: Impossibile pulire la directory {dir_path}. Dettagli: {e}")
+        else:
+            print(f"  La directory da pulire non esiste (OK): {dir_path}")

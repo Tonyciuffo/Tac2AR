@@ -1,3 +1,5 @@
+# coding: utf-8
+# segmentator_ops.py
 import os
 import sys
 import subprocess
@@ -170,8 +172,8 @@ def get_present_segment_ids(nii_segmented_file_path, segment_id_to_name_map):
         return present_segment_ids
 
     try:
-        nii_img = nib.load(nii_segmented_file_path)
-        data = nii_img.get_fdata() # Ottiene i dati volumetrici come array NumPy
+        # Getta i dati dall nifti
+        data = get_nifti_fdata(nii_segmented_file_path)
 
         print(f"DEBUG: Analizzando i volumi dei segmenti nel file NIfTI multi-etichetta '{nii_segmented_file_path}'...")
 
@@ -194,6 +196,27 @@ def get_present_segment_ids(nii_segmented_file_path, segment_id_to_name_map):
         traceback.print_exc()
         return present_segment_ids
 
+def get_nifti_voxel_spacing(nifti_filepath):
+    print(f"DEBUG: Caricamento del file NIfTI: {nifti_filepath}")
+    nii_img = nib.load(nifti_filepath)
+    # --- FIX: Estrai la spaziatura dei voxel dall'header ---
+    voxel_spacing = nii_img.header.get_zooms()
+    if voxel_spacing:
+        print(f"DEBUG: Spaziatura Voxel rilevata (mm): {voxel_spacing}")
+        return voxel_spacing
+    else:
+        return None
+
+def get_nifti_fdata(nifti_filepath):
+    print(f"DEBUG: Caricamento del file NIfTI: {nifti_filepath}")
+    nii_img = nib.load(nifti_filepath)
+    nii_fdata = nii_img.get_fdata()
+    if nii_fdata.size > 0:
+        print(f"DEBUG: Caricamento dei dati NIfTI riuscito")
+        return nii_fdata
+    else:
+        return None
+
 def export_stl_from_multilabel_nii(nii_filepath, all_segment_data, combined_mesh_rules, output_dir):
     """
     Esporta i file STL da un singolo file NIfTI multi-etichetta, implementando
@@ -208,16 +231,14 @@ def export_stl_from_multilabel_nii(nii_filepath, all_segment_data, combined_mesh
     
     try:
         print(f"DEBUG: Caricamento del file NIfTI: {nii_filepath}")
-        nii_img = nib.load(nii_filepath)
-        nii_data = nii_img.get_fdata()
-        # --- FIX: Estrai la spaziatura dei voxel dall'header ---
-        voxel_spacing = nii_img.header.get_zooms()
+        nii_data = get_nifti_fdata(nii_filepath)
+        voxel_spacing = get_nifti_voxel_spacing(nii_filepath)
         print(f"DEBUG: Spaziatura Voxel rilevata (mm): {voxel_spacing}")
         # ---------------------------------------------------------
     except Exception as e:
         print(f"ERRORE CRITICO nel caricamento del file NIfTI: {e}")
         return
-
+    # voxel_spacing = get_nifti_voxel_spacing(nii_filepath)
     grouped_segments = set()
 
     # --- 1. Prima Passata: Gestisci le Esportazioni Combinate (Override) ---
@@ -329,11 +350,11 @@ def convert_nii_to_stl(volume, output_stl_path, spacing=(1.0, 1.0, 1.0)):
 
 def populate_custom_details_for_segments(all_segment_data, segment_rules, combined_mesh_rules):
     """
-    Popola i parametri custom per i dati dei segmenti usando una logica di matching intelligente.
+    Popola i parametri custom per i dati dei segmenti usando una logica di matching euristico.
     Cerca corrispondenze sia per il nome esatto del segmento sia per varianti piu'generiche.
     """
     unmapped_segments = []
-    print("\n--- Fase: Popolamento dei Custom Parameters (con Logica di Matching Migliorata) ---")
+    print("\n--- Fase: Popolamento dei Custom Parameters ---")
 
     for seg_name, segment_data in all_segment_data.items():
         custom_params = segment_data['custom_parameters']
@@ -429,7 +450,7 @@ def run_total_segmentator(input_nifti_path, output_base_dir, tasks):
             capture_output=True,
             text=True,
             cwd=config.TOTAL_SEGMENTATOR_INSTALL_DIR,
-            #encoding=config.TOTAL_SEGMENTATOR_SNOMED_ENCODING
+            encoding=config.FILE_ENCODING
         )
         print(f"Segmentazione completata. Output salvato in '{output_base_dir}'.\n")
         print("DEBUG: --- TotalSegmentator STDOUT ---")
