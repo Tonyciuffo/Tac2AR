@@ -61,23 +61,20 @@ python Main.py
 
 E' possibile lanciare i processi di segmentazione e di fix delle geometrie indipendentemente con:
 python execute_segmentator_pipeline.py
-python execute_blender_pipeline-py // da testare bene
+python execute_blender_pipeline-py
 
 9) Nella directory di Output verranno generati:
 - Un file glb in standard PRB
 - Un file fbx in standard UPR
 - Una direcotry Textures con tutte le texture nei due standard (la metalness nel formato URP viene chiamata "_MetallicSmoothness")
-- 2 scene blender a monte e a valle del bake (uno con history ed uno per debug)
+- 1 scena blender con history (materiali procedurali, proiettori, modificatori)
+- 2 scene blender a valle del bake (uno PBR ed uno URP per debug)
 - 2 manifest in formato json con l'associazione segmenti-materiali prima e dopo l'interrogazione del database snomed (al momento viene interrogato il csv fornito con totalsegmentator)
+- 1 file log nella root del progetto. Verboso ma completo.
 
 BUG NOTI:
-L'esecusione della Blender Pipeline si interrompe con:
-ERRORE CRITICO: Impossibile importare un modulo fondamentale. Controlla che le librerie necessarie (es. PyYAML) siano installate nell'ambiente Python di Blender.
-Dettagli: No module named 'bpy'
-
-E' un problema di esecuzione dell'ambiente. Per il momento si patcha installando pyYaml anche dentro a Blender
-Dalla directory root:
-.\Blender\4.5\python\bin\python.exe -m pip install pyYaml
+Triangoli neri sulle mesh:
+Da indagare. corrispondono a facce su parti di uv non coperte da texture. Spostati da un apply deformer, transform, uv... da indagare
 
 
 ACKNOWLEDGMENTS / RINGRAZIAMENIT:
