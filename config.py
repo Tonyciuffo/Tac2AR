@@ -6,7 +6,7 @@ import sys
 # --- IMPOSTAZIONI GENERALI DEL PROGETTO ---
 
 # ID del cliente corrente. Usato per la strutturazione delle directory e i nomi dei file.
-CLIENT_ID = "HUVANT_TEST"
+CLIENT_ID = "Client"
 
 # ID della sessione del progetto corrente (es. ID scansione paziente). Usato per la strutturazione delle directory e i nomi dei file.
 PROJECT_SESSION_ID = "CASE_001_SCAN_01"
